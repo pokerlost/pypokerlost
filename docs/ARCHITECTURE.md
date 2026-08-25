@@ -244,7 +244,7 @@ Authorization values, cookies, tokens, and full payloads must never be placed in
 Object construction performs no network I/O.
 
 `Client.close()` is asynchronous and idempotent. If the client creates its transport, it closes it.
-If a transport is injected, ownership is explicit.
+An injected transport remains caller-owned unless `owns_transport=True` is passed explicitly.
 
 `async with client:` combines current-client installation with deterministic client cleanup.
 `client.as_current()` installs only context when a caller manages lifecycle elsewhere.

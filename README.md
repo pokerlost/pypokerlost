@@ -132,6 +132,10 @@ Typical client inputs are:
 - default non-secret or caller-provided headers;
 - an optional injected transport for tests or advanced integration.
 
+A client-created transport is always owned and closed by the client. An injected transport remains
+caller-owned by default; pass `owns_transport=True` when the client should close it. Repeated
+`Client.close()` calls are safe in either mode.
+
 Authentication, token refresh, retries, and service discovery are not part of the first foundation.
 
 ## Quality checks
