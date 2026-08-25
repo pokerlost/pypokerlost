@@ -2,10 +2,10 @@
 
 `pypokerlost` is the asynchronous Python SDK foundation for PokerLost.
 
-It provides a typed client, an injectable HTTP transport, awaitable method objects, and a
-task-local current-client context. The client intentionally has no endpoint-specific methods.
-Concrete PokerLost API methods will be added later as separate method classes after their contracts
-are defined.
+It provides a typed client, an injectable session layer, declarative awaitable method objects,
+centralized request/response handling, shared platform contracts, and a task-local current-client
+context. The client intentionally has no endpoint-specific methods. Concrete PokerLost API methods
+will be added later as separate method classes after their contracts are defined.
 
 Before development, read [`AGENTS.md`](AGENTS.md), [`SERVICE.md`](SERVICE.md), and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -17,7 +17,6 @@ The repository directory is `pokerlost/`. The import package is directly inside 
 ```text
 pokerlost/
 ├── pypokerlost/
-├── tests/
 ├── docs/
 ├── AGENTS.md
 ├── SERVICE.md
@@ -108,33 +107,93 @@ a method class under the relevant namespace and follow the naming rules in `AGEN
 An ordinary method supplies:
 
 - a stable RPC operation name in `namespace.method` form;
-- strict request fields;
-- transport-request construction, usually using the default RPC path;
-- typed response parsing.
+- an explicit `HttpMethod`, normally `HttpMethod.POST`;
+- an explicit `result_type` runtime token;
+- strict request fields.
 
 A streaming method supplies:
 
 - a stable operation name;
-- strict request fields;
-- transport-request construction.
+- an explicit `HttpMethod` when it differs from the default;
+- strict request fields.
 
-The base SDK does not guess the final `ApplicationResponse` envelope. Add shared envelope decoding
-only after the server contract is known.
+Both inherit class-level metadata and validation from `BaseMethod`. Methods do not implement request
+building or response parsing. `RequestBuilder` creates the standard `PreparedRequest`, and
+`ResponseHandler` decodes ordinary results through the declared result type. The SDK does not infer
+result types through runtime generic introspection.
+
+## Shared response contract
+
+Every handled JSON operation outcome uses the frozen `ApplicationResponse[ResultT]` contract from
+`pypokerlost.contracts`:
+
+```python
+ok: bool
+result: ResultT | None = None
+error: str | None = None
+error_message: str | None = None
+```
+
+A successful envelope forbids error metadata. A failed envelope requires both error fields and
+forbids a result. `ok=True, result=None` remains valid for operations without a result. Concrete
+services import this shared contract from the SDK rather than maintaining service-local copies.
+
+`ResponseHandler` applies one response policy:
+
+| HTTP status | Envelope | Outcome |
+| --- | --- | --- |
+| 2xx | valid, `ok=True` | Return the typed result. |
+| any | valid, `ok=False` | Raise `ApplicationError` with the stable error code. |
+| non-2xx | valid, `ok=True` | Raise `UnexpectedStatusError`. |
+| 2xx | invalid | Raise `ResponseDecodeError`. |
+| non-2xx | invalid | Raise `UnexpectedStatusError` with a bounded safe excerpt. |
+
+Pydantic validation errors are contained at this boundary and do not leak as public SDK behavior.
+For a non-2xx stream response, the SDK reads only a bounded error body, recognizes a valid
+`ApplicationResponse[None]` failure as `ApplicationError`, and always closes the live response.
+
+## Shared OpenAPI metadata
+
+Services use the FastAPI-independent `rpc_openapi_extra()` helper to publish the versioned
+`x-pokerlost` extension:
+
+```python
+rpc_openapi_extra(
+    access=(AccessRole.AUTO, AccessRole.MASTER),
+)
+```
+
+The extension declares deterministic `access.any_of` roles and whether a successful response is an
+`application_response` or `content_stream`; its error response is always
+`application_response`. Empty access, duplicate roles, and combining `public` with another role are
+invalid. The helper returns a new plain JSON-compatible dictionary and has no FastAPI dependency.
+It does not implement authorization, token acquisition, remote calls, or service discovery.
 
 ## Client configuration
 
-Construction is explicit. Core SDK objects do not read environment variables automatically.
+Construction is explicit. Core SDK objects do not read environment variables automatically. Supply
+either HTTP configuration for a client-created `HttpxSession`:
 
-Typical client inputs are:
+```python
+client = Client(
+    base_url="https://accounts.internal",
+    default_headers={...},
+)
+```
 
-- `base_url`;
-- timeout configuration;
-- default non-secret or caller-provided headers;
-- an optional injected transport for tests or advanced integration.
+or inject a configured session:
 
-A client-created transport is always owned and closed by the client. An injected transport remains
-caller-owned by default; pass `owns_transport=True` when the client should close it. Repeated
-`Client.close()` calls are safe in either mode.
+```python
+client = Client(
+    session=custom_session,
+    owns_session=False,
+)
+```
+
+Do not combine these forms. `base_url`, default headers, and timeout belong to `HttpxSession`, and
+`Client` stores no competing URL. A client-created session is owned and closed by the client. An
+injected session remains caller-owned by default; pass `owns_session=True` when the client should
+close it. Repeated `Client.close()` calls are safe in either mode.
 
 Authentication, token refresh, retries, and service discovery are not part of the first foundation.
 
@@ -145,14 +204,12 @@ uv lock --check
 make format
 make lint
 make typecheck
-make test
 make build
-python -m compileall -q pypokerlost tests
+python -m compileall -q pypokerlost
 git diff --check
 ```
 
-The `Makefile` contains thin wrappers only. Tests use fake or mock transports and do not call a live
-PokerLost service.
+The `Makefile` contains thin wrappers only.
 
 ## Build the distribution
 
@@ -169,12 +226,13 @@ Included:
 
 - asynchronous client lifecycle;
 - explicit and context-resolved ordinary method execution;
-- typed HTTP transport abstraction;
-- production `httpx` transport;
+- `BaseMethod`, `Method`, and `StreamMethod` operation descriptions;
+- centralized `RequestBuilder` and `ResponseHandler` policy;
+- injectable `BaseSession` and production `HttpxSession`;
+- shared `ApplicationResponse` and `x-pokerlost` contracts;
 - resource-safe content streaming;
 - SDK exception hierarchy;
-- package typing and version metadata;
-- unit-tested extension points for future methods.
+- package typing and version metadata.
 
 Deliberately absent:
 

@@ -43,10 +43,6 @@ class ContentStream:
         return self._headers
 
     @property
-    def is_success(self) -> bool:
-        return 200 <= self._status_code < 300
-
-    @property
     def is_closed(self) -> bool:
         return self._closed
 
@@ -59,8 +55,7 @@ class ContentStream:
         return bytes(await anext(self._byte_iterator))
 
     async def read_excerpt(self, limit: int) -> bytes:
-        """Consume and return at most ``limit`` bytes without buffering the body."""
-
+        """Consume and return at most ``limit`` bytes without buffering the full body."""
         if limit < 0:
             raise ValueError("Excerpt limit must not be negative")
         if limit == 0:

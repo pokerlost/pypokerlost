@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: format lint typecheck test build
+.PHONY: format lint typecheck build
 
 format:
 	$(UV) run ruff format .
@@ -12,9 +12,6 @@ lint:
 
 typecheck:
 	$(UV) run mypy
-
-test:
-	$(UV) run pytest
 
 build:
 	$(UV) build

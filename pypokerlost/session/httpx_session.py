@@ -5,14 +5,14 @@ from collections.abc import AsyncIterator, Mapping
 import httpx
 
 from pypokerlost.errors import TransportError
-from pypokerlost.transport.content_stream import ContentStream
-from pypokerlost.transport.transport import Transport
-from pypokerlost.transport.transport_request import TransportRequest
-from pypokerlost.transport.transport_response import TransportResponse
+from pypokerlost.session.base_session import BaseSession
+from pypokerlost.session.content_stream import ContentStream
+from pypokerlost.session.prepared_request import PreparedRequest
+from pypokerlost.session.raw_response import RawResponse
 
 
-class HttpxTransport(Transport):
-    """Production HTTP transport backed by ``httpx.AsyncClient``."""
+class HttpxSession(BaseSession):
+    """Production session adapter backed by ``httpx.AsyncClient``."""
 
     def __init__(
         self,
@@ -22,6 +22,7 @@ class HttpxTransport(Transport):
         default_headers: Mapping[str, str] | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        super().__init__()
         self._base_url = self._normalize_base_url(base_url)
         self._timeout = httpx.Timeout(timeout)
         self._default_headers = dict({} if default_headers is None else default_headers)
@@ -30,12 +31,15 @@ class HttpxTransport(Transport):
         )
         self._closed = False
 
-    async def execute(
-        self,
-        request: TransportRequest,
-        *,
-        operation: str | None = None,
-    ) -> TransportResponse:
+    @property
+    def base_url(self) -> str:
+        return str(self._base_url)
+
+    @property
+    def is_closed(self) -> bool:
+        return self._closed
+
+    async def _execute(self, request: PreparedRequest, *, operation: str) -> RawResponse:
         self._ensure_open()
         http_request = self._build_request(request)
         try:
@@ -43,18 +47,13 @@ class HttpxTransport(Transport):
         except httpx.TransportError as error:
             raise self._mapped_error(error, operation=operation) from error
 
-        return TransportResponse(
+        return RawResponse(
             status_code=response.status_code,
             headers=dict(response.headers),
             body=response.content,
         )
 
-    async def open_stream(
-        self,
-        request: TransportRequest,
-        *,
-        operation: str | None = None,
-    ) -> ContentStream:
+    async def _open_stream(self, request: PreparedRequest, *, operation: str) -> ContentStream:
         self._ensure_open()
         http_request = self._build_request(request)
         try:
@@ -79,11 +78,11 @@ class HttpxTransport(Transport):
         except httpx.TransportError as error:
             raise self._mapped_error(error, operation=None) from error
 
-    def _build_request(self, request: TransportRequest) -> httpx.Request:
+    def _build_request(self, request: PreparedRequest) -> httpx.Request:
         headers = httpx.Headers(self._default_headers)
         headers.update(request.headers)
         request_url = self._join_path(request.path)
-        json_body = request.json
+        json_body = request.json_body
 
         if json_body is None:
             return self._client.build_request(
@@ -106,7 +105,7 @@ class HttpxTransport(Transport):
         self,
         response: httpx.Response,
         *,
-        operation: str | None,
+        operation: str,
     ) -> AsyncIterator[bytes]:
         try:
             async for chunk in response.aiter_bytes():
@@ -114,12 +113,7 @@ class HttpxTransport(Transport):
         except httpx.TransportError as error:
             raise self._mapped_error(error, operation=operation) from error
 
-    async def _close_response(
-        self,
-        response: httpx.Response,
-        *,
-        operation: str | None,
-    ) -> None:
+    async def _close_response(self, response: httpx.Response, *, operation: str) -> None:
         try:
             await response.aclose()
         except httpx.TransportError as error:
@@ -132,14 +126,10 @@ class HttpxTransport(Transport):
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise RuntimeError("HTTP transport is closed")
+            raise RuntimeError("HTTP session is closed")
 
     @staticmethod
-    def _mapped_error(
-        error: httpx.TransportError,
-        *,
-        operation: str | None,
-    ) -> TransportError:
+    def _mapped_error(error: httpx.TransportError, *, operation: str | None) -> TransportError:
         return TransportError(
             operation=operation,
             detail=f"HTTP transport failed with {error.__class__.__name__}",
@@ -147,7 +137,7 @@ class HttpxTransport(Transport):
 
     @staticmethod
     def _normalize_base_url(base_url: str) -> httpx.URL:
-        parsed_url = httpx.URL(base_url)
+        parsed_url = httpx.URL(base_url.strip())
         if parsed_url.scheme not in {"http", "https"} or parsed_url.host is None:
             raise ValueError("Base URL must be an absolute HTTP or HTTPS URL")
         if parsed_url.query or parsed_url.fragment:

@@ -3,7 +3,7 @@ from .pokerlost_error import PokerLostError
 
 
 class ResponseDecodeError(PokerLostError):
-    """Raised by a method when a successful response cannot be decoded."""
+    """Raised when a successful response violates the shared response contract."""
 
     operation: str | None
     status_code: int | None

@@ -1,3 +1,4 @@
+from .application_error import ApplicationError
 from .client_closed_error import ClientClosedError
 from .client_context_error import ClientContextError
 from .pokerlost_error import PokerLostError
@@ -6,6 +7,7 @@ from .transport_error import TransportError
 from .unexpected_status_error import UnexpectedStatusError
 
 __all__ = (
+    "ApplicationError",
     "ClientClosedError",
     "ClientContextError",
     "PokerLostError",
