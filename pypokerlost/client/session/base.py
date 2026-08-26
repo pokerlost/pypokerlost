@@ -3,16 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 from pypokerlost.methods import Method, StreamMethod
 
 from .request import PreparedRequest, RequestBuilder
 from .response import RawResponse, ResponseHandler
 from .stream import ContentStream
-
-if TYPE_CHECKING:
-    from pypokerlost.client.client import Client
 
 
 class BaseSession(ABC):
@@ -22,34 +18,30 @@ class BaseSession(ABC):
         self.request_builder = RequestBuilder()
         self.response_handler = ResponseHandler()
 
-    async def make_request[ResultT](
-        self,
-        client: Client,
-        method: Method[ResultT],
-    ) -> ResultT:
-        request = self.request_builder.build(client, method)
-        response = await self.execute(client, request)
-        return self.response_handler.handle(client, method, response)
+    async def start(self) -> None:
+        """Prepare the session; HTTP adapters normally need no eager work."""
+        return None
+
+    async def make_request[ResultT](self, method: Method[ResultT]) -> ResultT:
+        request = self.request_builder.build(method)
+        response = await self.execute(request)
+        return self.response_handler.handle(method, request.operation, response)
 
     @asynccontextmanager
-    async def stream_content(
-        self,
-        client: Client,
-        method: StreamMethod,
-    ) -> AsyncIterator[ContentStream]:
-        request = self.request_builder.build(client, method)
-        content = await self.open_stream(client, request)
+    async def stream_content(self, method: StreamMethod) -> AsyncIterator[ContentStream]:
+        request = self.request_builder.build(method)
+        content = await self.open_stream(request)
         try:
             yield content
         finally:
             await content.aclose()
 
     @abstractmethod
-    async def execute(self, client: Client, request: PreparedRequest) -> RawResponse:
+    async def execute(self, request: PreparedRequest) -> RawResponse:
         """Send and fully buffer an ordinary response."""
 
     @abstractmethod
-    async def open_stream(self, client: Client, request: PreparedRequest) -> ContentStream:
+    async def open_stream(self, request: PreparedRequest) -> ContentStream:
         """Open a response without buffering its content."""
 
     @abstractmethod

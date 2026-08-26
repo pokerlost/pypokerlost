@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from types import MappingProxyType
-from typing import Protocol, Self, runtime_checkable
-
-
-@runtime_checkable
-class _ClosableAsyncIterator(Protocol):
-    async def aclose(self) -> None: ...
+from typing import Self
 
 
 class ContentStream:
@@ -59,8 +54,4 @@ class ContentStream:
         if self._closed:
             return
         self._closed = True
-        try:
-            if isinstance(self._byte_iterator, _ClosableAsyncIterator):
-                await self._byte_iterator.aclose()
-        finally:
-            await self._close_callback()
+        await self._close_callback()

@@ -1,39 +1,42 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from pypokerlost.methods import BaseMethod
-from pypokerlost.types import JsonValue
-
-if TYPE_CHECKING:
-    from pypokerlost.client.client import Client
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedRequest:
     """Transport-neutral request produced from a method object."""
 
-    method: str
+    operation: str
+    http_method: str
     path: str
-    json: JsonValue = field(repr=False)
+    content: bytes = field(repr=False)
 
 
 class RequestBuilder:
     """Translate declarative method data into a request value."""
 
-    def build(self, client: Client, method: BaseMethod) -> PreparedRequest:
+    def build(self, method: BaseMethod) -> PreparedRequest:
         method_type = type(method)
-        api_method = getattr(method_type, "__api_method__", None)
-        if not isinstance(api_method, str) or not api_method.strip():
+        try:
+            operation = method_type.__api_method__
+        except AttributeError:
+            raise TypeError("Concrete methods must declare a non-empty __api_method__") from None
+        if not isinstance(operation, str) or not operation.strip():
             raise TypeError("Concrete methods must declare a non-empty __api_method__")
 
-        http_method = getattr(method_type, "__http_method__", None)
+        try:
+            http_method = method_type.__http_method__
+        except AttributeError:
+            raise TypeError("Concrete methods must declare a non-empty __http_method__") from None
         if not isinstance(http_method, str) or not http_method.strip():
             raise TypeError("Concrete methods must declare a non-empty __http_method__")
 
         return PreparedRequest(
-            method=http_method,
-            path=f"/{api_method}",
-            json=method.model_dump(mode="json", by_alias=False),
+            operation=operation,
+            http_method=http_method,
+            path=f"/{operation}",
+            content=method.model_dump_json(by_alias=False).encode("utf-8"),
         )

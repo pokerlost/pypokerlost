@@ -2,18 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from functools import cache
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import cast
 
 from pydantic import TypeAdapter, ValidationError
 
 from pypokerlost.contracts import ApplicationResponse
 from pypokerlost.exceptions import ApplicationError, ResponseDecodeError
-from pypokerlost.methods import BaseMethod, Method
-
-if TYPE_CHECKING:
-    from pypokerlost.client.client import Client
+from pypokerlost.methods import Method
+from pypokerlost.types import JsonValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,26 +25,15 @@ class RawResponse:
         object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
 
 
-@cache
-def _response_adapter(method_type: type[BaseMethod]) -> TypeAdapter[ApplicationResponse[Any]]:
-    returning = getattr(method_type, "__returning__", None)
-    if returning is None:
-        raise TypeError("Concrete ordinary methods must declare __returning__")
-    # Pydantic accepts runtime annotations here; mypy requires a static type expression.
-    response_type = ApplicationResponse[returning]  # type: ignore[valid-type]
-    return TypeAdapter(response_type)
-
-
-@cache
-def _cached_result_adapter(method_type: type[BaseMethod]) -> TypeAdapter[Any]:
-    returning = getattr(method_type, "__returning__", None)
-    if returning is None:
-        raise TypeError("Concrete ordinary methods must declare __returning__")
-    return TypeAdapter(returning)
+_ENVELOPE_ADAPTER = TypeAdapter(ApplicationResponse[JsonValue])
 
 
 def _result_adapter[ResultT](method_type: type[Method[ResultT]]) -> TypeAdapter[ResultT]:
-    return cast(TypeAdapter[ResultT], _cached_result_adapter(method_type))
+    try:
+        returning = method_type.__returning__
+    except AttributeError:
+        raise TypeError("Concrete ordinary methods must declare __returning__") from None
+    return cast(TypeAdapter[ResultT], TypeAdapter(returning))
 
 
 class ResponseHandler:
@@ -55,13 +41,12 @@ class ResponseHandler:
 
     def handle[ResultT](
         self,
-        client: Client,
         method: Method[ResultT],
+        operation: str,
         response: RawResponse,
     ) -> ResultT:
-        operation = _operation(method)
         try:
-            envelope = _response_adapter(type(method)).validate_json(response.body)
+            envelope = _ENVELOPE_ADAPTER.validate_json(response.body)
         except ValidationError:
             raise ResponseDecodeError(
                 operation=operation,
@@ -81,21 +66,10 @@ class ResponseHandler:
                 status_code=response.status_code,
             )
 
-        if envelope.result is None:
-            try:
-                return _result_adapter(type(method)).validate_python(None)
-            except ValidationError:
-                raise ResponseDecodeError(
-                    operation=operation,
-                    status_code=response.status_code,
-                ) from None
-
-        # The specialized ApplicationResponse has already validated a non-null result.
-        return cast(ResultT, envelope.result)
-
-
-def _operation(method: BaseMethod) -> str:
-    operation = getattr(type(method), "__api_method__", None)
-    if not isinstance(operation, str) or not operation.strip():
-        raise TypeError("Concrete methods must declare a non-empty __api_method__")
-    return operation
+        try:
+            return _result_adapter(type(method)).validate_python(envelope.result)
+        except ValidationError:
+            raise ResponseDecodeError(
+                operation=operation,
+                status_code=response.status_code,
+            ) from None

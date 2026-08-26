@@ -10,11 +10,12 @@ PACKAGE_ROOT: pypokerlost
 ## Purpose
 
 `pypokerlost` is the asynchronous Python SDK core for PokerLost services. Its intended ergonomics
-combine a central Pyrogram-like `Client` with aiogram-like typed RPC method objects. These projects
-are references only and are not dependencies.
+combine a central Pyrogram-like `Client`, aiogram-like typed RPC method objects, and a separate
+`Application` composition root. These projects are references only and are not dependencies.
 
-The current package provides the mechanism needed to execute typed ordinary methods and manage raw
-content streams. It contains no concrete PokerLost operations yet.
+The current package provides explicit client lifecycle, automatic application scope, typed ordinary
+method execution, and resource-scoped raw content streaming. It contains no concrete PokerLost
+operations yet.
 
 ## Current product surface
 
@@ -26,12 +27,18 @@ await client(method)
 await method.execute(client)
 ```
 
-Ambient task-local execution is opt-in:
+`Application` normally owns startup, task-local current-client installation, and guaranteed stop:
 
 ```python
-with client.as_current():
+application.run(main)
+result = await application.run_async(main)
+
+async with application:
     result = await method
 ```
+
+`run()` uses `asyncio.run()`; `run_async()` supports an already-running loop. The same application
+cannot be entered concurrently or reentrantly.
 
 Streaming remains explicitly resource-scoped:
 
@@ -49,19 +56,24 @@ The low-level HTTP assembly is explicit:
 ```python
 http_client = httpx.AsyncClient(base_url="http://localhost:8000")
 client = Client(HttpxSession(http_client))
+application = Application(client)
 ```
 
-Network configuration remains in `httpx.AsyncClient`. `Client.close()` delegates to its session;
-the broader ownership and lifecycle policy is not yet a product contract.
+Network configuration remains in `httpx.AsyncClient`; the SDK has no settings or environment
+loading. `Client` owns its supplied session, and `HttpxSession` owns and closes its supplied HTTP
+client. Manual lifecycle uses `await client.start()` and terminal, idempotent
+`await client.stop()`.
 
 ## Responsibilities
 
-- `Client`: session facade and task-local current-client scope.
+- `Application`: automatic client lifecycle and task-local current-client scope.
+- `Client`: lifecycle-aware facade owning one supplied session.
 - method bases: immutable Pydantic request values plus declarative operation/result metadata.
-- `BaseSession`: shared ordinary and streaming execution flow.
-- `RequestBuilder`: method-to-request translation.
-- `ResponseHandler`: application-envelope validation and declared-result decoding.
-- `HttpxSession`: thin I/O adapter over a caller-configured `httpx.AsyncClient`.
+- `BaseSession`: shared ordinary and streaming execution flow without access to `Client`.
+- `RequestBuilder`: one-time method serialization to an explicit-operation request with byte
+  content.
+- `ResponseHandler`: reusable JSON-value envelope validation followed by typed result decoding.
+- `HttpxSession`: owning I/O adapter over a caller-configured `httpx.AsyncClient`.
 - `ContentStream`: live byte iteration and explicit resource closing.
 - `contracts`, `openapi`, and `exceptions.py`: shared wire, metadata, and failure values.
 
@@ -87,7 +99,8 @@ does not enforce authorization policy.
 The next feature work should add one authoritative accountsService method and one authoritative
 authService method with their real request/result models and errors. The current package does not
 include those methods, client endpoint wrappers, authentication, routing, retries, WebSocket
-processing, or a test suite.
+processing, SDK settings, or a test suite. There are no speculative auth hooks or context bags in
+the execution pipeline; future accounts and auth operations remain ordinary typed methods.
 
 Runtime dependencies remain `pydantic` and `httpx`; changes to dependency declarations require a
 direct task requirement.
@@ -98,11 +111,10 @@ Real service contracts will determine:
 
 - service URL and multi-service routing shape;
 - authentication state and token-refresh responsibility;
-- session/client ownership and sharing;
-- client start/stop, async context, reentrancy, and WebSocket lifecycle;
-- timeout, headers, proxy, TLS, pool, retry, and environment behavior;
+- any future SDK-level timeout, header, proxy, TLS, pool, retry, or environment policy;
 - omitted-field versus explicit-`null` encoding;
 - HTTP-status semantics and streaming error bodies;
-- endpoint wrappers and a possible synchronous facade.
+- endpoint wrappers, a possible synchronous SDK facade, and WebSocket/update behavior.
 
-These areas are not promises or prohibitions in the current SDK.
+These areas are not promises in the current SDK. Client/session/HTTP-client ownership and
+`Application`/`Client` lifecycle are fixed current behavior rather than deferred decisions.

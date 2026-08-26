@@ -6,27 +6,38 @@ scope live in [`../SERVICE.md`](../SERVICE.md).
 ## Design goal
 
 The current architecture fixes component interaction while leaving unknown product policy open.
-Its ergonomic direction combines a central Pyrogram-like client with aiogram-like immutable typed
-RPC objects.
+Its ergonomic direction combines a central Pyrogram-like client, aiogram-like immutable typed RPC
+objects, and an application-level lifecycle owner.
 
 ```text
-typed Method
-→ explicit or task-local Client
-→ BaseSession(client, method)
-→ RequestBuilder(client, method)
-→ concrete session I/O
-→ ResponseHandler(client, method, response)
-→ typed result
+Client.make_request(method)
+→ BaseSession.make_request(method)
+→ RequestBuilder.build(method)
+→ BaseSession.execute(prepared_request)
+→ ResponseHandler.handle(method, prepared_request.operation, raw_response)
+→ ResultT
 ```
 
-Passing `Client` through the pipeline leaves a narrow extension point for future auth or routing
-state without putting HTTP logic in methods or changing their public execution forms.
+Streaming follows the shorter resource-owning path:
+
+```text
+Client.stream_content(method)
+→ BaseSession.stream_content(method)
+→ RequestBuilder.build(method)
+→ BaseSession.open_stream(prepared_request)
+→ ContentStream
+```
+
+No session, request, response, or HTTP-adapter API receives `Client`. There is no replacement
+context bag, service locator, auth hook, or dependency container in the pipeline.
 
 ## Package shape
 
 ```text
 pypokerlost/
 ├── __init__.py
+├── application.py
+├── exceptions.py
 ├── py.typed
 ├── client/
 │   ├── __init__.py
@@ -49,7 +60,6 @@ pypokerlost/
 ├── openapi/
 │   ├── __init__.py
 │   └── rpc.py
-├── exceptions.py
 └── types/
     ├── __init__.py
     └── json.py
@@ -63,17 +73,18 @@ a target file count.
 
 | Component | Current responsibility |
 | --- | --- |
-| `Client` | Hold a supplied session, delegate calls, and manage explicit current-client context. |
+| `Application` | Own one client's automatic lifecycle and task-local execution scope. |
+| `Client` | Own one supplied session, enforce lifecycle state, and delegate calls. |
 | method bases | Immutable typed request values and declarative operation/result metadata. |
 | `BaseSession` | Coordinate request building, concrete I/O, response handling, and stream scope. |
-| `RequestBuilder` | Produce a transport-neutral request from `Client` and a method. |
-| `ResponseHandler` | Validate `ApplicationResponse` against the declared result type. |
-| `HttpxSession` | Adapt a caller-configured `httpx.AsyncClient` to session I/O hooks. |
+| `RequestBuilder` | Serialize a method once into an explicit-operation request with byte content. |
+| `ResponseHandler` | Validate the fixed JSON envelope, then the declared result type. |
+| `HttpxSession` | Own and adapt a caller-configured `httpx.AsyncClient`. |
 | `ContentStream` | Expose live byte iteration and one idempotent close path. |
 | `contracts` | Hold authoritative shared wire models. |
 | `openapi` | Produce the small plain-data `x-pokerlost` marker. |
 
-## Client and current context
+## Application lifecycle
 
 Construction is explicit:
 
@@ -81,19 +92,47 @@ Construction is explicit:
 http_client = httpx.AsyncClient(base_url="https://accounts.internal")
 session = HttpxSession(http_client)
 client = Client(session)
+application = Application(client)
 ```
 
-`Client` passes itself into both ordinary and streaming session calls:
+`Application` owns exactly that client. Its lifecycle order is:
+
+```text
+enter application
+→ await client.start()
+→ install client in the task-local ContextVar
+→ run the entrypoint or direct async scope
+→ await client.stop()
+→ reset the exact ContextVar token
+```
+
+Startup must succeed before context installation. If installation fails, the client is stopped and
+the original failure is re-raised. Exit always attempts terminal stop and resets the stored token
+in `finally`, including when the entrypoint or stop fails. A second concurrent or reentrant entry of
+the same application raises `ApplicationStateError`. Entrypoint failures propagate after cleanup.
+
+`Application.run_async(entrypoint)` is exactly an async application scope around
+`await entrypoint(application.client)`. `Application.run(entrypoint)` invokes it with
+`asyncio.run()`; direct `async with application` is also supported.
+
+## Client lifecycle and current context
+
+`Client` owns one supplied `BaseSession`. `start()` calls `session.start()` once and is idempotent
+while started. `stop()` calls `session.close()` once, is idempotent, and permanently closes the
+client. Requests and streams before startup raise `ClientNotStartedError`; after stop they raise
+`ClientClosedError`. There is no lazy startup and no `Client` async context manager.
+
+Manual lifecycle remains possible:
 
 ```python
-await session.make_request(client, method)
-session.stream_content(client, stream_method)
+await client.start()
+try:
+    result = await client(method)
+finally:
+    await client.stop()
 ```
 
-The session may ignore the client today. Keeping it in the call chain allows a later explicit
-decision to use client-owned runtime state without coupling method objects to the client.
-
-Ambient execution is limited to token-based `ContextVar` handling:
+`client.as_current()` is limited to token-based `ContextVar` handling and never changes lifecycle:
 
 ```python
 with client.as_current():
@@ -101,7 +140,7 @@ with client.as_current():
 ```
 
 The context manager resets the exact token in `finally`, so nested scopes restore the preceding
-client. The current architecture assigns no `async with client` behavior.
+client.
 
 ## Method objects
 
@@ -129,16 +168,29 @@ stays non-awaitable because its body requires a resource-owning context manager.
 
 ## Request path
 
-`RequestBuilder.build(client, method)` produces a small immutable `PreparedRequest`. It derives the
-relative path from method metadata and uses ordinary Pydantic JSON-mode serialization. It does not
-resolve base URLs, add auth, or carry retry/routing policy.
+`RequestBuilder.build(method)` reads `__api_method__` and `__http_method__` once, rejects missing or
+invalid string metadata, and produces:
+
+```python
+@dataclass(frozen=True, slots=True)
+class PreparedRequest:
+    operation: str
+    http_method: str
+    path: str
+    content: bytes
+```
+
+The builder derives `path` as `f"/{operation}"`, serializes the method exactly once with normal
+alias-free Pydantic JSON serialization, and encodes it as UTF-8 bytes. The operation remains an
+explicit value and is never reconstructed from the path. `PreparedRequest` carries no base URL,
+auth, timeout, routing, retry, or `httpx` state.
 
 Omitted-field versus explicit-`null` behavior will be chosen from real operation contracts. The
 current builder does not establish an SDK-wide sentinel or exclusion policy.
 
 ## Session and HTTP I/O
 
-`BaseSession` implements an overridable Template Method flow:
+`BaseSession` implements the shared ordinary flow:
 
 ```text
 build request
@@ -146,26 +198,27 @@ build request
 → handle response
 ```
 
-Its pipeline methods receive `Client`, are not marked `@final`, and use ordinary concrete
-`RequestBuilder` and `ResponseHandler` collaborators. Alternative sessions can override behavior
-when a real second scenario appears.
+Its pipeline methods receive only method and prepared-request values. `BaseSession.start()` is a
+default no-op because HTTP clients normally initialize lazily. Concrete adapters implement
+`execute(request)`, `open_stream(request)`, and `close()` without access to `Client`.
 
 `HttpxSession` receives an existing `httpx.AsyncClient`. The caller configures `base_url`, timeout,
 headers, proxies, TLS, limits, transport, and environment behavior through httpx. The adapter sends
-prepared requests, opens streams, maps transport failures to the SDK exception, and delegates
-closing to the supplied HTTP client. Whether that closing behavior should represent ownership or a
-shared-session arrangement remains open.
+prepared byte content, preserves caller-configured default headers while setting JSON content type,
+opens live streams, and maps known transport failures to `TransportError` with the original cause.
+It owns and closes the supplied HTTP client. Cancellation is not converted.
 
 ## Response path
 
-`RawResponse` is a transport-neutral buffered response. `ResponseHandler` constructs the
-`ApplicationResponse` adapter from the method's declared result type and validates the response
-body. Pydantic validation failures become `ResponseDecodeError`.
+`RawResponse` is a transport-neutral buffered response. `ResponseHandler` first validates every
+body through one reusable adapter for `ApplicationResponse[JsonValue]`. This stage validates only
+the fixed envelope and a JSON-compatible result value.
 
 A valid failed envelope becomes one `ApplicationError`, preserving `error`, `error_message`, the
-operation, and HTTP status as diagnostic metadata. A valid successful envelope returns `result`.
-An envelope-level `None` result remains valid, then succeeds only when the method's declared result
-annotation accepts `None`.
+operation, and HTTP status as diagnostic metadata. For a valid success, a separate `TypeAdapter`
+created from the concrete method's `__returning__` validates the result. An envelope-level `None`
+succeeds only when that declared result annotation accepts `None`. Pydantic validation failures at
+either boundary become `ResponseDecodeError`.
 The current handler does not turn HTTP status/envelope combinations into a platform-wide policy
 matrix.
 
@@ -174,7 +227,7 @@ authorization values, or raw/full response bodies.
 
 ## Streaming
 
-`BaseSession.stream_content(client, method)` builds a request, asks the concrete session to open a
+`BaseSession.stream_content(method)` builds a request, asks the concrete session to open a
 live `ContentStream`, yields it, and closes it in `finally`. This covers normal completion, early
 break, and caller exceptions without buffering a successful body.
 
@@ -216,17 +269,28 @@ error_message: str | None = None
 
 It imports no FastAPI code and performs no authorization-policy validation.
 
+## Auth and configuration boundary
+
+Authentication is not implemented. The pipeline has no auth provider, token state, refresh logic,
+authorization injection, middleware callback, or special handling for auth operations. Future
+accountsService and authService operations are ordinary typed method and result classes.
+
+There is no SDK settings subsystem, environment loading, URL routing map, or duplicated HTTP
+configuration. `Application` accepts only a `Client`; `Client` accepts only a `BaseSession`; and
+`HttpxSession` accepts the caller-configured `httpx.AsyncClient` it owns.
+
 ## Deferred decisions
 
 The first real accountsService and authService methods will provide evidence for:
 
 - one-service or multi-service client routing and URL mapping;
 - auth state, authorization placement, and token refresh;
-- session and HTTP-client ownership or sharing;
-- start/stop, async context, reentrancy, and WebSocket lifecycle;
-- timeout, headers, proxy, TLS, pool, retry, and environment policy;
+- any future SDK-level timeout, header, proxy, TLS, pool, retry, or environment policy;
 - request omitted/`null` semantics;
 - HTTP-status interpretation and streaming error bodies;
-- endpoint wrappers, a synchronous facade, and other convenience APIs.
+- endpoint wrappers, a synchronous SDK facade, WebSocket/update behavior, and other convenience
+  APIs.
 
-These are deferred product decisions, not constraints imposed by the current mechanism.
+These are deferred product decisions, not constraints imposed by the current mechanism. Ownership,
+client lifecycle, application scope, and the absence of lower-layer `Client` dependencies are fixed
+current decisions.

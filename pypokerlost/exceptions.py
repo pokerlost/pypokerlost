@@ -7,7 +7,8 @@ class ClientContextError(PokerLostError):
 
     def __init__(self) -> None:
         super().__init__(
-            "No current Client is installed; pass a client to execute() or use client.as_current()."
+            "No current Client is installed; pass a client to execute(), use Application, "
+            "or enter client.as_current()."
         )
 
 
@@ -24,8 +25,18 @@ class ClientClosedError(PokerLostError):
         super().__init__(message)
 
 
-class ClientStateError(PokerLostError):
-    """Raised when a client lifecycle operation is invalid for its current state."""
+class ClientNotStartedError(PokerLostError):
+    """Raised when an operation is attempted before client startup."""
+
+    def __init__(self) -> None:
+        super().__init__("Client is not started")
+
+
+class ApplicationStateError(PokerLostError):
+    """Raised when an application lifecycle entry is invalid."""
+
+    def __init__(self) -> None:
+        super().__init__("Application is already running")
 
 
 class TransportError(PokerLostError):
@@ -67,21 +78,6 @@ class ApplicationError(PokerLostError):
         )
 
 
-class UnexpectedStatusError(PokerLostError):
-    """Raised when an HTTP status cannot be handled by an operation contract."""
-
-    status_code: int
-    operation: str | None
-
-    def __init__(self, status_code: int, *, operation: str | None = None) -> None:
-        self.status_code = status_code
-        self.operation = operation
-        message = f"Unexpected HTTP status {status_code}"
-        if operation is not None:
-            message = f"{message}; operation={operation!r}"
-        super().__init__(message)
-
-
 class ResponseDecodeError(PokerLostError):
     """Raised when a response violates its wire contract."""
 
@@ -106,11 +102,11 @@ class ResponseDecodeError(PokerLostError):
 
 __all__ = (
     "ApplicationError",
+    "ApplicationStateError",
     "ClientClosedError",
     "ClientContextError",
-    "ClientStateError",
+    "ClientNotStartedError",
     "PokerLostError",
     "ResponseDecodeError",
     "TransportError",
-    "UnexpectedStatusError",
 )

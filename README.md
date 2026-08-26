@@ -1,8 +1,9 @@
 # pypokerlost
 
-`pypokerlost` is the asynchronous Python SDK core for PokerLost. Its current foundation combines a
-central `Client` facade with immutable typed RPC method objects. Concrete PokerLost operations will
-be added after their service contracts are authoritative.
+`pypokerlost` is the asynchronous Python SDK core for PokerLost. Its current foundation combines an
+`Application` lifecycle owner, a central asynchronous `Client`, and immutable typed RPC method
+objects. Concrete PokerLost operations will be added after their service contracts are
+authoritative.
 
 Operations are values executed by `Client`. The current package does not include endpoint-specific
 client methods or dynamic endpoint lookup; whether convenience wrappers belong in a later public API
@@ -28,14 +29,15 @@ Package version is declared in `pyproject.toml` and exposed from installed distr
 python -c "import pypokerlost; print(pypokerlost.__version__)"
 ```
 
-## Create a client
+## Create an application
 
-Configure HTTP behavior with `httpx.AsyncClient`, then adapt it to the SDK session interface:
+Configure HTTP behavior with `httpx.AsyncClient`, adapt it to the SDK session interface, and give
+the resulting client to `Application`:
 
 ```python
 import httpx
 
-from pypokerlost import Client
+from pypokerlost import Application, Client
 from pypokerlost.client.session import HttpxSession
 
 http_client = httpx.AsyncClient(
@@ -45,12 +47,37 @@ http_client = httpx.AsyncClient(
 )
 session = HttpxSession(http_client)
 client = Client(session)
+application = Application(client)
+
+
+async def main(client: Client) -> None:
+    explicit_result = await client(some_method)
+    ambient_result = await another_method
+
+
+application.run(main)
 ```
 
 Configuration such as base URL, timeout, headers, proxies, TLS, connection limits, and custom
-transport remains in `httpx.AsyncClient`. When finished, explicitly call `await client.close()`;
-`Client` delegates that call to its session. Broader ownership and shared-session semantics are not
-yet a product contract.
+transport remains in `httpx.AsyncClient`; the SDK has no settings model or environment loading.
+`Application` owns the automatic lifecycle and task-local current-client scope. `Client` owns its
+supplied session, and `HttpxSession` owns and closes its supplied `httpx.AsyncClient`.
+
+`Application.run()` owns the event loop through `asyncio.run()`. In an already-running loop, use
+`run_async()` instead:
+
+```python
+await application.run_async(main)
+```
+
+As another alternative, the application can be used directly as an async scope:
+
+```python
+async with application:
+    result = await some_method
+```
+
+Entering the same application concurrently or reentrantly raises `ApplicationStateError`.
 
 ## Execute ordinary methods
 
@@ -62,19 +89,24 @@ result = await client(method)
 result = await method.execute(client)
 ```
 
-`Client.__call__()` delegates to `make_request()`. Ambient execution is opt-in through an explicit
-task-local scope:
+`Client.__call__()` delegates to `make_request()`. `Application` installs its client as current, so
+`await method` resolves it inside the application entrypoint or direct async scope.
+
+Manual lifecycle and task-local scope remain available:
 
 ```python
+await client.start()
 try:
     with client.as_current():
         result = await method
 finally:
-    await client.close()
+    await client.stop()
 ```
 
-`Method.__await__()` delegates to `execute()`. Calling `await method` without a current client raises
-`ClientContextError`. The SDK currently assigns no lifecycle behavior to `async with client`.
+`Method.__await__()` delegates to `execute()`. Calling `await method` without a current client
+raises `ClientContextError`. Requests and streams before startup raise `ClientNotStartedError`.
+After terminal `stop()`, which is idempotent, they raise `ClientClosedError`. `client.as_current()`
+changes only the `ContextVar`, and `Client` is deliberately not an async context manager.
 
 ## Stream content
 
@@ -122,9 +154,11 @@ An operation identifier follows `namespace.method`, giving the standard relative
 Method fields contain request data only; methods do not build HTTP requests, parse responses,
 perform I/O, refresh credentials, or retry.
 
-`RequestBuilder` converts the method with ordinary Pydantic JSON-mode serialization. Per-operation
-omitted-field versus explicit-`null` behavior will be chosen from real operation contracts rather
-than imposed as an SDK-wide policy now.
+`RequestBuilder` reads the operation and HTTP method metadata once, serializes the model once with
+normal alias-free Pydantic JSON serialization, and stores the UTF-8 bytes in `PreparedRequest`.
+The prepared value also retains the operation explicitly; later layers never reconstruct it from
+the path. Per-operation omitted-field versus explicit-`null` behavior will be chosen from real
+operation contracts rather than imposed as an SDK-wide policy now.
 
 ## Response contract
 
@@ -138,11 +172,11 @@ error_message: str | None = None
 ```
 
 Success forbids error metadata. Failure requires both error fields and forbids a result.
-`ResponseHandler` validates the envelope against the method's declared result type. Validation
-failures become `ResponseDecodeError`, a valid failed envelope becomes `ApplicationError` with the
-service's public error data unchanged, and a valid successful envelope returns its result.
-An envelope-level `None` remains valid and is checked against the method's declared result
-annotation before it is returned.
+`ResponseHandler` first uses one reusable adapter for `ApplicationResponse[JsonValue]`. A valid
+failure becomes `ApplicationError` with the service's public error data unchanged. For a success,
+the result is then validated separately against the method's declared return type. Validation
+failures become `ResponseDecodeError`; `None` therefore succeeds only for a method whose declared
+result type accepts it.
 
 HTTP status remains available as diagnostic metadata. Interpretation of status/envelope
 combinations is deferred until real service behavior establishes it. Public exception messages do
@@ -180,19 +214,23 @@ The first real accountsService and authService methods will provide evidence for
 
 - one-service or multi-service routing and URL mapping;
 - authentication state, authorization placement, and token refresh;
-- session and HTTP-client ownership or sharing;
-- start/stop, async context, reentrancy, and WebSocket lifecycle;
-- timeout, headers, proxy, TLS, pool, retry, and environment policy;
+- any future SDK-level timeout, header, proxy, TLS, pool, retry, or environment policy;
 - per-operation omitted-field versus explicit-`null` encoding;
 - HTTP-status interpretation and streaming error bodies;
-- endpoint wrappers, a synchronous facade, and other convenience APIs.
+- endpoint wrappers, a synchronous SDK facade, WebSocket/update behavior, and other convenience
+  APIs.
 
-These are open product decisions, not permanent prohibitions in the current SDK.
+These are open product decisions, not permanent prohibitions in the current SDK. Ownership and
+`Application`/`Client` lifecycle are fixed current behavior. Authentication is not implemented and
+there are no auth middleware hooks, context bags, SDK settings, or environment-based configuration.
+Future accounts and auth operations remain ordinary typed method and result classes.
 
 ## Quality checks
 
 ```bash
 uv lock --check
+uv run ruff format .
+uv run ruff check --fix .
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
@@ -207,13 +245,15 @@ The current stage uses task-specific shell smoke checks rather than a committed 
 
 Included now:
 
-- a thin asynchronous client facade over a supplied session;
+- an application-level owner for automatic client lifecycle and task-local execution scope;
+- a lifecycle-aware asynchronous client owning one supplied session;
 - explicit and task-local ordinary method execution;
 - separate session, request-building, and response-handling responsibilities;
 - resource-scoped content streaming;
-- typed method serialization and declared-result validation;
+- single-pass byte serialization with explicit operation metadata and declared-result validation;
 - shared `ApplicationResponse` and minimal `x-pokerlost.access` contracts;
 - a small SDK exception hierarchy.
 
 The current package does not add concrete PokerLost endpoints, authentication, routing, retries,
-WebSocket processing, endpoint wrappers, or a test suite.
+SDK settings, WebSocket processing, endpoint wrappers, or a test suite. Session, request, response,
+and HTTP-adapter layers do not receive `Client`.

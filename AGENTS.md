@@ -31,13 +31,28 @@ latest direct user requirement
 
 The current core fixes how components collaborate, not product policies that have not yet been
 learned from real PokerLost operations. The ergonomic direction is a central Pyrogram-like client
-with aiogram-like typed RPC method objects; neither project is a dependency or implementation to
-copy.
+with aiogram-like typed RPC method objects and a small application-level lifecycle owner; neither
+project is a dependency or implementation to copy.
 
 The core currently has no concrete PokerLost operations. The next product step is a real vertical
 slice from accountsService and authService, not another speculative subsystem.
 
-## Current execution API
+## Current lifecycle and execution API
+
+`Application` owns one `Client`, starts it, installs it as the task-local current client, and stops
+it with guaranteed context cleanup. It supports a synchronous entrypoint runner, an asynchronous
+runner, and direct async scope management:
+
+```python
+application.run(main)
+result = await application.run_async(main)
+
+async with application:
+    result = await method
+```
+
+`Application.run()` owns its event loop through `asyncio.run()`. `Application.run_async()` is for an
+already-running loop. Reentrant or concurrent entry of the same application is rejected.
 
 Ordinary methods support explicit client calls:
 
@@ -47,7 +62,19 @@ result = await client(method)
 result = await method.execute(client)
 ```
 
-Task-local execution requires an explicit synchronous context scope:
+Manual client lifecycle remains available:
+
+```python
+await client.start()
+try:
+    result = await client(method)
+finally:
+    await client.stop()
+```
+
+`Client.stop()` is terminal. Requests and streams require a started client; they fail with focused
+public errors before startup and after stop. `client.as_current()` manages only the task-local
+context and may be used when lifecycle is managed manually:
 
 ```python
 with client.as_current():
@@ -55,29 +82,33 @@ with client.as_current():
 ```
 
 `Method.__await__()` delegates to `execute()`. `StreamMethod` is not awaitable; callers consume it
-through the context manager returned by `client.stream_content(method)`.
-
-`async with client` has no current semantics. It is reserved for a later product decision about
-start/stop, authentication, or WebSocket lifecycle.
+through the context manager returned by `client.stream_content(method)`. `Client` deliberately has
+no async context-manager API because `Application` is the lifecycle owner.
 
 ## Component boundaries
 
-- `Client` is a thin facade over one supplied `BaseSession`. It delegates ordinary and streaming
-  calls, manages only the task-local current-client scope, and delegates explicit `close()`.
+- `Application` owns one `Client`, its automatic lifecycle, and its task-local execution scope.
+- `Client` owns one supplied `BaseSession`, exposes explicit `start()`/`stop()`, delegates ordinary
+  and streaming calls, and can manage an explicit task-local current-client scope.
 - `BaseMethod`, `Method[ResultT]`, and `StreamMethod` are frozen Pydantic v2 request objects with
   forbidden extra fields. Concrete methods declare `__api_method__` and, for an ordinary method,
   `__returning__`; `__http_method__` defaults to `POST` and may be overridden.
-- `BaseSession` owns the shared execution flow and passes both `Client` and method/request values to
-  its collaborators and concrete I/O hooks.
-- `RequestBuilder` translates a method into a transport-neutral `PreparedRequest`.
-- `ResponseHandler` validates the shared application envelope and returns the declared result or
-  raises a public SDK error.
-- A concrete session adapter performs I/O. `HttpxSession` adapts an already configured
+- `BaseSession` owns the shared execution flow. Session, request, response, and HTTP-adapter layers
+  never receive `Client` or a replacement context bag.
+- `RequestBuilder` translates a method into a transport-neutral `PreparedRequest` containing the
+  explicit operation and an immutable UTF-8 JSON body.
+- `ResponseHandler` first validates the shared envelope as `ApplicationResponse[JsonValue]`, then
+  validates a successful result against the method's declared return type.
+- A concrete session adapter performs I/O. `HttpxSession` owns and adapts an already configured
   `httpx.AsyncClient`.
 - `ContentStream` represents a live byte stream and provides idempotent explicit closing.
 
 Methods contain immutable wire request data only. They do not build HTTP requests, decode
 responses, perform I/O, refresh credentials, or retry.
+
+Authentication is not implemented. Do not introduce auth placeholders, generic hooks, arbitrary
+client-state reads, or authorization injection without an authoritative contract. The SDK also has
+no settings subsystem or environment loading: callers configure `httpx.AsyncClient` directly.
 
 ## Fixed wire contract
 
@@ -154,11 +185,11 @@ supported by real accountsService/authService behavior:
 
 - one-service versus multi-service clients, URL mapping, routing, and discovery;
 - access-token and refresh-token state, token refresh, and authorization injection;
-- ownership and sharing of sessions or `httpx.AsyncClient` instances;
-- client start/stop semantics, async context management, reentrancy, and closed-state policy;
-- timeouts, headers, proxies, TLS, pools, retries, and environment-variable behavior;
+- any future SDK-level timeout, header, proxy, TLS, pool, retry, or environment policy;
 - per-operation omitted-field versus explicit-`null` encoding;
 - HTTP-status interpretation and the streaming error-body protocol;
-- endpoint wrappers on `Client`, a synchronous facade, and WebSocket/update lifecycle.
+- endpoint wrappers on `Client`, a synchronous SDK facade, and WebSocket/update behavior.
 
 These deferred items are outside the current task scope; their future design remains open.
+Concrete accountsService and authService operations remain future typed method and result classes;
+they are not transport or lifecycle policy.
