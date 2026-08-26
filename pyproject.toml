@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pypokerlost"
 version = "0.1.0"
-description = "Asynchronous Python SDK foundation for PokerLost services"
+description = "Asynchronous Python SDK foundation for Pokerlost services"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

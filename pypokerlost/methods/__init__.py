@@ -1,3 +1,3 @@
-from .base import BaseMethod, Method, StreamMethod
+from .base import PokerlostMethod
 
-__all__ = ("BaseMethod", "Method", "StreamMethod")
+__all__ = ("PokerlostMethod",)

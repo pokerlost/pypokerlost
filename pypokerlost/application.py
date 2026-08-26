@@ -2,23 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
-from contextvars import Token
 from types import TracebackType
-from typing import Self
 
 from pypokerlost.client import Client
-from pypokerlost.client.context import reset_current_client, set_current_client
 from pypokerlost.exceptions import ApplicationStateError
 
 
 class Application:
-    """Own the client lifecycle and task-local execution scope."""
+    """Coordinate automatic lifecycle for one client."""
 
     def __init__(self, client: Client) -> None:
         self._client = client
         self._is_running = False
-        self._context_token: Token[Client | None] | None = None
 
     @property
     def client(self) -> Client:
@@ -28,7 +23,7 @@ class Application:
     def is_running(self) -> bool:
         return self._is_running
 
-    async def __aenter__(self) -> Self:
+    async def __aenter__(self) -> Client:
         if self._is_running:
             raise ApplicationStateError
         self._is_running = True
@@ -38,19 +33,7 @@ class Application:
         except BaseException:
             self._is_running = False
             raise
-
-        try:
-            token = set_current_client(self._client)
-        except BaseException:
-            try:
-                with suppress(BaseException):
-                    await self._client.stop()
-            finally:
-                self._is_running = False
-            raise
-
-        self._context_token = token
-        return self
+        return self._client
 
     async def __aexit__(
         self,
@@ -58,27 +41,17 @@ class Application:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        token = self._context_token
         try:
-            if exc_value is None:
-                await self._client.stop()
-            else:
-                with suppress(BaseException):
-                    await self._client.stop()
+            await self._client.stop()
         finally:
-            try:
-                if token is not None:
-                    reset_current_client(token)
-            finally:
-                self._context_token = None
-                self._is_running = False
+            self._is_running = False
 
     async def run_async[ResultT](
         self,
         entrypoint: Callable[[Client], Awaitable[ResultT]],
     ) -> ResultT:
-        async with self:
-            return await entrypoint(self.client)
+        async with self as client:
+            return await entrypoint(client)
 
     def run[ResultT](
         self,

@@ -1,39 +1,39 @@
 from __future__ import annotations
 
+from abc import ABC
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from pypokerlost.client.context_controller import ClientContextController
+from pypokerlost.enums import ServiceName
+from pypokerlost.exceptions import ClientContextError
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
 
 
-class BaseMethod(BaseModel):
-    """Immutable request data and declarative metadata for an RPC operation."""
+class PokerlostMethod[ResultT](ClientContextController, ABC):
+    """Typed request fields, RPC metadata, and optional explicit client binding."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        validate_default=True,
+        arbitrary_types_allowed=True,
+    )
 
+    __service__: ClassVar[ServiceName]
     __api_method__: ClassVar[str]
     __http_method__: ClassVar[str] = "POST"
-
-
-class Method[ResultT](BaseMethod):
-    """Typed ordinary RPC operation."""
-
     __returning__: ClassVar[Any]
 
-    async def execute(self, client: Client | None = None) -> ResultT:
-        """Execute through an explicit client or the task-local current client."""
+    async def emit(self, client: Client) -> ResultT:
+        return await client(self)
+
+    def __await__(self) -> Generator[Any, None, ResultT]:
+        client = self.client
         if client is None:
-            from pypokerlost.client.context import get_current_client
-
-            client = get_current_client()
-        return await client.make_request(self)
-
-    def __await__(self) -> Generator[object, None, ResultT]:
-        return self.execute().__await__()
-
-
-class StreamMethod(BaseMethod):
-    """RPC operation whose response is consumed as a managed byte stream."""
+            raise ClientContextError
+        return self.emit(client).__await__()

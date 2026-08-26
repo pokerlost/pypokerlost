@@ -9,112 +9,259 @@ PACKAGE_ROOT: pypokerlost
 
 ## Purpose
 
-`pypokerlost` is the asynchronous Python SDK core for PokerLost services. Its intended ergonomics
+`pypokerlost` is the asynchronous Python SDK core for Pokerlost services. Its intended ergonomics
 combine a central Pyrogram-like `Client`, aiogram-like typed RPC method objects, and a separate
-`Application` composition root. These projects are references only and are not dependencies.
+`Application` lifecycle coordinator. These projects are references only and are not dependencies.
 
-The current package provides explicit client lifecycle, automatic application scope, typed ordinary
-method execution, and resource-scoped raw content streaming. It contains no concrete PokerLost
-operations yet.
+The current package provides typed ordinary-method execution, a pluggable asynchronous session,
+explicit service/request metadata, isolated request preparation, strategy-based response
+interpretation, and automatic application-managed lifecycle. It contains no concrete Pokerlost
+operations.
 
 ## Current product surface
 
-Ordinary methods support explicit execution:
+One `PokerlostMethod` instance supports all three public execution forms:
 
 ```python
-await client.make_request(method)
-await client(method)
-await method.execute(client)
+result = await client(method)
+result = await client.make_request(method)
+result = await method.as_(client)
 ```
 
-`Application` normally owns startup, task-local current-client installation, and guaranteed stop:
+`Client.__call__()` binds the method to that client. Awaiting a method uses only its explicit private
+binding; an unbound method raises `ClientContextError`. The SDK has no ambient or task-local current
+client.
+
+`Application` guarantees startup and shutdown around one user entrypoint:
 
 ```python
+from pypokerlost import Application, Client
+
+application = Application(Client())
+
+
+async def main(client: Client) -> None:
+    result = await client(method)
+
+
 application.run(main)
 result = await application.run_async(main)
-
-async with application:
-    result = await method
 ```
 
-`run()` uses `asyncio.run()`; `run_async()` supports an already-running loop. The same application
-cannot be entered concurrently or reentrantly.
-
-Streaming remains explicitly resource-scoped:
+`run()` uses `asyncio.run()` and `run_async()` supports an already-running loop. Direct application
+scope returns the managed client:
 
 ```python
-async with client.stream_content(stream_method) as content:
-    async for chunk in content:
-        ...
+async with application as client:
+    result = await method.as_(client)
 ```
 
-`StreamMethod` is not awaitable. `Client` currently has no endpoint-specific methods or dynamic
-endpoint lookup.
+The same `Application` cannot be entered concurrently or reentrantly. A completed application may
+be entered again because the default session is restartable.
 
-The low-level HTTP assembly is explicit:
+`Client` is also an async context manager for manual lifecycle:
 
 ```python
-http_client = httpx.AsyncClient(base_url="http://localhost:8000")
-client = Client(HttpxSession(http_client))
-application = Application(client)
+async with client:
+    result = await client(method)
 ```
 
-Network configuration remains in `httpx.AsyncClient`; the SDK has no settings or environment
-loading. `Client` owns its supplied session, and `HttpxSession` owns and closes its supplied HTTP
-client. Manual lifecycle uses `await client.start()` and terminal, idempotent
-`await client.stop()`.
+## Server, service, and session configuration
+
+`Client()` chooses `HttpxSession()` by default. The fixed default server is:
+
+```python
+PRODUCTION = APIServer.from_base("http://localhost:8080/api")
+```
+
+Its operation URL is direct and predictable:
+
+```python
+PRODUCTION.api_url("accounts.get")
+# "http://localhost:8080/api/accounts.get"
+```
+
+A caller may select another one-base RPC server without adding routing policy:
+
+```python
+from pypokerlost import Client
+from pypokerlost.client.session import HttpxSession
+from pypokerlost.environment import APIServer
+
+api_server = APIServer.from_base("https://example.invalid/api")
+client = Client(HttpxSession(api_server=api_server, timeout=20))
+```
+
+Every method also declares a `ServiceName`: `ACCOUNTS` for accountsService or `AUTH` for
+authService. This identity remains explicit on the method, prepared request, response handler call,
+API exception, and OpenAPI metadata. It does not select a server, perform routing, or activate
+authentication; the current gateway is shared.
+
+`HttpxSession` creates and owns its internal `httpx.AsyncClient`. Construction performs no network
+I/O, concurrent first startup creates only one HTTP client, closing is idempotent, and a later
+startup creates a fresh client. Request execution may start the session lazily. Callers do not
+inject an HTTPX client or HTTPX ownership flags.
+
+`Client` accepts any supplied `BaseSession`. A different async framework belongs in another
+`BaseSession` implementation, not in an abstraction below `HttpxSession`.
 
 ## Responsibilities
 
-- `Application`: automatic client lifecycle and task-local current-client scope.
-- `Client`: lifecycle-aware facade owning one supplied session.
-- method bases: immutable Pydantic request values plus declarative operation/result metadata.
-- `BaseSession`: shared ordinary and streaming execution flow without access to `Client`.
-- `RequestBuilder`: one-time method serialization to an explicit-operation request with byte
-  content.
-- `ResponseHandler`: reusable JSON-value envelope validation followed by typed result decoding.
-- `HttpxSession`: owning I/O adapter over a caller-configured `httpx.AsyncClient`.
-- `ContentStream`: live byte iteration and explicit resource closing.
-- `contracts`, `openapi`, and `exceptions.py`: shared wire, metadata, and failure values.
+- `Application`: automatic lifecycle for exactly one `Client` and overlapping-entry rejection.
+- `Client`: default-session selection, explicit method binding, call delegation, and lifecycle
+  delegation.
+- `ClientContextController`: private bound-object client context, including future response-model
+  validation context.
+- `PokerlostMethod`: typed request fields plus service, operation, HTTP method, and declared result
+  metadata.
+- `AccessRole` and `ServiceName`: SDK-owned metadata enums in `pypokerlost.enums`.
+- `APIServer`: immutable one-base operation URL template without service routing.
+- `RequestValuePreparer`: strict recursive JSON-compatible value preparation.
+- `RpcRequestBuilder`: one-time serialization into an explicit-service, explicit-operation
+  `RpcRequest`.
+- `BaseSession`: shared timeout resolution and orchestration through a request builder and response
+  handler.
+- `BaseResponseHandler`: response-protocol strategy contract.
+- `ApplicationResponseHandler`: fixed application-envelope decoding, validation, and status
+  interpretation.
+- `HttpxSession`: owning, lazy, restartable HTTPX composition and I/O adapter.
+- `contracts`, `openapi`, and `exceptions`: shared wire values, metadata, and public failures.
+
+## Request and response behavior
+
+The ordinary collaboration flow is fixed:
+
+```text
+PokerlostMethod
+→ Client
+→ BaseSession
+→ RpcRequestBuilder
+→ HttpxSession HTTP I/O
+→ BaseResponseHandler
+→ ApplicationResponseHandler
+→ declared ResultT
+```
+
+Request model fields are dumped alias-free in JSON mode with `exclude_unset=True`. An unset field is
+omitted, while an explicitly supplied `None` remains JSON `null`. Private client binding is not a
+model field and cannot enter the serialized body. Unsupported remaining values are rejected rather
+than stringified.
+
+`RpcRequest` contains exactly the explicit `ServiceName`, operation, HTTP method, URL, and immutable
+UTF-8 content needed at the request-builder/HTTP-adapter boundary. It contains no client, auth,
+retry, response, generic context, HTTPX object, or mutable JSON value.
+
+`BaseSession` composes a `RpcRequestBuilder` and `BaseResponseHandler`, resolves the effective
+timeout, and delegates request execution. It does not configure servers or JSON, prepare request
+values, decode responses, map statuses, route services, authenticate, or retry. In particular,
+response interpretation is not a session method.
+
+`ApplicationResponseHandler` decodes through the configured `json_loads`, validates the fixed
+envelope as `ApplicationResponse[JsonValue]`, and validates a successful result separately against
+`method.__returning__` with `context={"client": method.client}`. Decoder and Pydantic validation
+failures become `ClientDecodeError`. JSON `null` crosses the result boundary only when the declared
+result annotation accepts `None`.
+
+A failed envelope preserves the method, explicit service and operation, status, exact `error`, and
+exact `error_message` in a `PokerlostAPIError` subtype. Failed statuses map as follows:
+
+- `400` bad request;
+- `401` unauthorized;
+- `403` forbidden;
+- `404` not found;
+- `409` conflict;
+- `413` entity too large;
+- `422` validation;
+- `429` too many requests;
+- `>=500` server error;
+- every other status uses base `PokerlostAPIError`.
+
+A successful envelope with a non-2xx HTTP status raises `PokerlostProtocolError`. HTTPX timeout
+failures become `ClientTimeoutError`; other HTTPX transport failures become
+`ClientConnectionError`. Causes are preserved. Public failures contain no request content,
+response body, headers, cookies, credentials, or tokens.
+
+The `httpx.Response` never leaves `HttpxSession`. There is no separate status/body response wrapper.
+The adapter passes only the exact protocol inputs to `BaseResponseHandler.handle()`.
 
 ## Fixed contracts
 
 `ResponseModel` keeps `extra="forbid"`, `frozen=True`, `hide_input_in_errors=True`, and
 `validate_default=True`.
 
-`ApplicationResponse[ResultT]` keeps the established fields `ok`, `result`, `error`, and
-`error_message`, their defaults, and its validator. Success forbids error metadata; failure forbids
-a result and requires both error fields.
+`ApplicationResponse[ResultT]` keeps the established fields, defaults, and validator:
 
-RPC operation identifiers follow `namespace.method`, producing the relative path
-`/{namespace}.{method}`. Ordinary methods declare their result type and are executed by a session;
-the `Client` does not need a registry of concrete endpoints.
+```python
+ok: bool
+result: ResultT | None = None
+error: str | None = None
+error_message: str | None = None
+```
 
-`AccessRole` provides `public`, `user`, `support`, `master`, and `auto`. The shared
-`rpc_openapi_extra()` helper emits only `x-pokerlost.access` as plain JSON-compatible metadata and
-does not enforce authorization policy.
+Success forbids error metadata. Failure forbids a result and requires both error fields.
+
+RPC operation identifiers follow `namespace.method`. With an `APIServer`, that operation becomes
+`{base}/{namespace}.{method}`; service and operation remain explicit in `RpcRequest`.
+
+## Enums and OpenAPI metadata
+
+All SDK-owned enums live in focused modules under `pypokerlost.enums`. `AccessRole` provides
+`public`, `user`, `support`, `master`, and `auto`; `ServiceName` provides `accounts` and `auth`.
+
+`RpcOpenApiExtra` is immutable metadata only. For example:
+
+```python
+RpcOpenApiExtra(
+    service=ServiceName.ACCOUNTS,
+    access=(AccessRole.AUTO, AccessRole.MASTER),
+).as_dict()
+```
+
+returns a fresh dictionary:
+
+```python
+{
+    "x-pokerlost": {
+        "contract_version": 1,
+        "service": "accounts",
+        "access": ["auto", "master"],
+    },
+}
+```
+
+Role order is preserved. This value neither imports FastAPI nor authorizes callers, validates role
+combinations, infers a service, fetches OpenAPI, parses schemas, or generates methods.
 
 ## Current scope
 
-The next feature work should add one authoritative accountsService method and one authoritative
-authService method with their real request/result models and errors. The current package does not
-include those methods, client endpoint wrappers, authentication, routing, retries, WebSocket
-processing, SDK settings, or a test suite. There are no speculative auth hooks or context bags in
-the execution pipeline; future accounts and auth operations remain ordinary typed methods.
+The next feature work should add authoritative accountsService and authService operations with
+their real request/result models and errors. The current package intentionally has no:
 
-Runtime dependencies remain `pydantic` and `httpx`; changes to dependency declarations require a
-direct task requirement.
+- concrete API methods or endpoint-specific `Client` wrappers;
+- authentication state or placeholder, token handling, authorization injection, refresh, login
+  during startup, or special handling for `ServiceName.AUTH`;
+- streaming API or placeholder;
+- OpenAPI fetching, parsing, method generation, generated source, or code-generation CLI;
+- multi-service routing, discovery, retries, WebSocket/update handling, SDK settings, or environment
+  loading;
+- response status/body wrapper or session-owned response parser;
+- compatibility aliases for removed public names;
+- committed test suite.
+
+`PokerlostUnauthorizedError` classifies a response only and triggers no authentication behavior.
+Runtime dependencies remain `pydantic` and `httpx`; dependency declaration changes require a direct
+task requirement.
 
 ## Deferred decisions
 
 Real service contracts will determine:
 
-- service URL and multi-service routing shape;
-- authentication state and token-refresh responsibility;
-- any future SDK-level timeout, header, proxy, TLS, pool, retry, or environment policy;
-- omitted-field versus explicit-`null` encoding;
-- HTTP-status semantics and streaming error bodies;
-- endpoint wrappers, a possible synchronous SDK facade, and WebSocket/update behavior.
+- multi-service client/routing shape beyond one supplied `APIServer`;
+- authentication ownership and token-refresh responsibility;
+- future proxy, TLS, connection-pool, custom-header, retry, or environment policy;
+- endpoint wrappers, a synchronous SDK facade, and WebSocket/update behavior;
+- any future streaming API and its error-body protocol.
 
-These areas are not promises in the current SDK. Client/session/HTTP-client ownership and
-`Application`/`Client` lifecycle are fixed current behavior rather than deferred decisions.
+Current URL construction, explicit service/operation metadata, request omission/null semantics,
+timeout delegation, response status classification, session ownership/restart, and
+`Application`/`Client` lifecycle are implemented behavior rather than deferred decisions.
