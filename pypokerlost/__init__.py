@@ -1,10 +1,12 @@
 from importlib.metadata import version as _distribution_version
 
 from pypokerlost.client import Client
-from pypokerlost.errors import (
+from pypokerlost.contracts import ApplicationResponse
+from pypokerlost.exceptions import (
     ApplicationError,
     ClientClosedError,
     ClientContextError,
+    ClientStateError,
     PokerLostError,
     ResponseDecodeError,
     TransportError,
@@ -14,11 +16,13 @@ from pypokerlost.methods import Method, StreamMethod
 
 __version__ = _distribution_version("pypokerlost")
 
-__all__ = [
+__all__ = (
     "ApplicationError",
+    "ApplicationResponse",
     "Client",
     "ClientClosedError",
     "ClientContextError",
+    "ClientStateError",
     "Method",
     "PokerLostError",
     "ResponseDecodeError",
@@ -26,4 +30,4 @@ __all__ = [
     "TransportError",
     "UnexpectedStatusError",
     "__version__",
-]
+)

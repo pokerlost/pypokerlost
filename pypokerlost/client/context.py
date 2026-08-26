@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
-from pypokerlost.errors import ClientContextError
+from pypokerlost.exceptions import ClientContextError
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
@@ -22,7 +22,7 @@ def get_current_client() -> Client:
     return client
 
 
-def install_current_client(client: Client) -> Token[Client | None]:
+def set_current_client(client: Client) -> Token[Client | None]:
     return _current_client.set(client)
 
 

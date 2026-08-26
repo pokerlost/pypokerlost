@@ -11,7 +11,7 @@ class _ClosableAsyncIterator(Protocol):
 
 
 class ContentStream:
-    """A live byte stream whose lifetime is owned by its surrounding context."""
+    """Live response bytes with one underlying-response close callback."""
 
     __slots__ = (
         "_byte_iterator",
@@ -23,6 +23,7 @@ class ContentStream:
 
     def __init__(
         self,
+        *,
         status_code: int,
         headers: Mapping[str, str],
         byte_iterator: AsyncIterator[bytes],
@@ -54,25 +55,9 @@ class ContentStream:
             raise RuntimeError("Content stream is closed")
         return bytes(await anext(self._byte_iterator))
 
-    async def read_excerpt(self, limit: int) -> bytes:
-        """Consume and return at most ``limit`` bytes without buffering the full body."""
-        if limit < 0:
-            raise ValueError("Excerpt limit must not be negative")
-        if limit == 0:
-            return b""
-
-        excerpt = bytearray()
-        async for chunk in self:
-            remaining = limit - len(excerpt)
-            excerpt.extend(chunk[:remaining])
-            if len(excerpt) >= limit:
-                break
-        return bytes(excerpt)
-
     async def aclose(self) -> None:
         if self._closed:
             return
-
         self._closed = True
         try:
             if isinstance(self._byte_iterator, _ClosableAsyncIterator):

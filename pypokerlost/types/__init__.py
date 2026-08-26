@@ -1,4 +1,3 @@
-from .http_method import HttpMethod
-from .json_value import JsonScalar, JsonValue
+from .json import JsonScalar, JsonValue
 
-__all__ = ("HttpMethod", "JsonScalar", "JsonValue")
+__all__ = ("JsonScalar", "JsonValue")
