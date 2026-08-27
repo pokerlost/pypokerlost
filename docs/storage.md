@@ -44,12 +44,15 @@ provided; storage does not strip, lowercase, prefix, hash, or otherwise rewrite 
 Values must match the recursive `JSONValue` type:
 
 ```python
-type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+from pydantic import FiniteFloat
+
+type JSONValue = None | bool | int | FiniteFloat | str | list[JSONValue] | dict[str, JSONValue]
 ```
 
 Convert domain objects explicitly before storing them. Pydantic models, dataclasses, bytes, UUIDs,
 datetime objects, enums, files, callables, clients, sessions, and arbitrary Python objects are not
-accepted.
+accepted. NaN and positive or negative infinity are not JSON values and are also rejected at any
+nested depth.
 
 Storage makes a deep copy on both `set()` and `get()`. Mutating a list or dictionary after storing
 it, or mutating a value returned by `get()`, cannot change the stored value.

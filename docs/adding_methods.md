@@ -31,14 +31,19 @@ class GetAccountMethod(PokerlostMethod[GetAccountResult]):
 Use the authoritative RPC contract to:
 
 1. define the result model;
-2. set `__api_method__` to a non-empty `namespace.method` operation;
+2. set `__api_method__` to a lowercase `namespace.method` operation;
 3. set `__returning__` explicitly;
 4. declare alias-free `snake_case` request fields;
-5. override `__http_method__` only when the contract differs from `POST`.
+5. override `__http_method__` only when the contract uses `GET`, `PUT`, `PATCH`, or `DELETE`
+   instead of `POST`.
+
+`PokerlostMethod` remains abstract until the concrete class supplies both `__api_method__` and
+`__returning__`.
 
 Unknown fields are rejected. Unset fields are omitted from JSON; an explicitly supplied `None`
 remains JSON `null`. Nested Pydantic models, enums, UUIDs, dates, tuples, and custom field
-serializers are handled by Pydantic JSON mode.
+serializers are handled by Pydantic JSON mode. Non-finite floats are rejected by the method boundary
+and by the default strict JSON encoder.
 
 A method remains a pure request description and never accesses storage implicitly; application
 code may use `client.storage` explicitly outside the RPC pipeline.
@@ -75,7 +80,7 @@ The service remains responsible for declaring its security scheme, OAuth2 flow, 
 ## Checklist
 
 - The result and request fields match the authoritative contract.
-- The operation follows `namespace.method`; `__returning__` is explicit.
+- The lowercase operation follows `namespace.method`; `__returning__` is explicit.
 - Optional fields distinguish omission from explicit `None` correctly.
 - The method extends `PokerlostMethod` directly and contains no execution policy.
 - Focused package exports and documentation are updated without compatibility aliases.

@@ -105,14 +105,27 @@ uv run python scripts/generate_methods.py file path/to/openapi.json \
 
 The check fails when an expected file is missing or changed, a previously owned file is stale, or
 the manifest differs. Generated source contains no timestamp; operations, files, imports, and
-exports have stable ordering.
+exports have stable ordering. Every generated Python module contains exactly one
+`from __future__ import annotations` in the valid position before ordinary imports.
 
-Each service owns one manifest under `scripts/.generated_methods/`. It records the generator
-version, OpenAPI version, canonical source SHA-256, service identifier, output package, and owned
-files. Manifest-owned paths must be normalized relative Python paths inside that service's output
-subpackage. Normal generation overwrites only files carrying the generator header and removes
-stale files only when the previous manifest owns them. An unrelated manual file is neither
-overwritten nor removed.
+Each canonical output root and service pair owns one manifest under
+`scripts/.generated_methods/<output-sha256>/`. Repository-local outputs use a tagged, normalized
+repository-relative identity, so the manifest path remains stable across checkout locations.
+External outputs use a tagged canonical absolute identity. The directory name is a SHA-256 identity
+and does not expose either path in manifest metadata. Two different `--output` roots therefore have
+independent version history and owned-file state, even for the same service. Each manifest records
+the generator version, OpenAPI version, canonical source SHA-256, service identifier, output
+package, and owned files. Manifest-owned paths must be normalized relative Python paths inside that
+service's output subpackage. Normal generation overwrites only files carrying the generator header
+and removes stale files only when the previous manifest owns them. An unrelated manual file is
+neither overwritten nor removed.
+
+An older unscoped `scripts/.generated_methods/<service>.json` manifest cannot be safely attributed
+to a particular output root. When no scoped manifest exists, generation reports that legacy state
+instead of silently bypassing its version history. After reviewing the intended output, use
+`--force` once to migrate its ownership and version history to the chosen output-scoped state. The
+legacy manifest is removed only after the generated files and new scoped manifest are written
+successfully.
 
 `--force` deliberately permits overwriting a conflicting target and bypassing contract-version
 guards:
@@ -155,7 +168,7 @@ not generated.
 
 The supported schema subset includes:
 
-- local component references for schemas, request bodies, and responses;
+- chained local component references for schemas, request bodies, and responses;
 - typed JSON object request bodies, named nested object models, arrays, and typed or JSON-value
   dictionaries;
 - strings, integers, numbers, booleans, and `null`;
@@ -170,8 +183,24 @@ unknown-field policy. A request body must declare typed properties; a free-form 
 rejected. The success envelope has exactly the public `ApplicationResponse` fields, requires its
 publicly required fields, and forbids additional properties.
 
+Document and operation metadata are parsed before operation selection. JSON Schemas are validated
+against the strict supported subset only when a selected operation reaches them through its request
+body, JSON 2xx success response, or local component references. Unused component schemas and
+non-success response schemas therefore do not constrain generation; an unsupported schema still
+fails with its component or operation location as soon as generated code depends on it.
+
+This reachability rule does not make inaccurate service OpenAPI acceptable. A service that maps
+FastAPI request validation failures to `ApplicationResponse[None]` must explicitly publish that
+same reusable envelope as its `422` response metadata instead of advertising FastAPI's default
+validation-error body.
+
 Length and item-count bounds are non-negative, and regular-expression patterns must be accepted by
-Pydantic's regex engine. Constraints applied to the wrong schema kind fail before files are written.
+Pydantic's regex engine. Supported constraints remain active on direct fields, nested array items,
+typed dictionary values, scalar results, and referenced scalar aliases. Constraints applied to the
+wrong schema kind fail before files are written. UUID, date, date-time, and time formats remain
+supported, but combining those converted value types with `minLength`, `maxLength`, or `pattern` is
+rejected instead of applying a string constraint after conversion. Cyclic pure aliases and cyclic
+`allOf` composition fail with a generation error; recursive object models remain supported.
 
 External references, OpenAPI parameters, free-form request bodies, inline nested object schemas,
 incompatible success schemas, semantic schema keywords outside the supported subset, unsupported

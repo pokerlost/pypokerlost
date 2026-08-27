@@ -81,29 +81,38 @@ class BaseStorage(abc.ABC):
         try:
             return self._key_adapter.validate_python(key)
         except ValidationError as error:
-            error_type = error.errors()[0]["type"]
-            if error_type == "string_type":
-                raise TypeError("Storage key must be a str") from error
-            raise ValueError("Storage key must not be empty or whitespace-only") from error
+            invalid_type = error.errors()[0]["type"] == "string_type"
+        if invalid_type:
+            raise TypeError("Storage key must be a str") from TypeError(
+                "Storage key validation failed",
+            )
+        raise ValueError(
+            "Storage key must not be empty or whitespace-only",
+        ) from ValueError("Storage key validation failed")
 
     def _parse_value(self, value: JSONValue) -> JSONValue:
         try:
             return self._value_adapter.validate_python(value, strict=True)
-        except ValidationError as error:
-            raise TypeError("Storage value must be JSON-compatible") from error
+        except ValidationError:
+            pass
+        raise TypeError("Storage value must be JSON-compatible") from TypeError(
+            "Storage value validation failed",
+        )
 
     def _parse_ttl(self, ttl: StorageTTL) -> float | None:
         try:
             parsed_ttl = self._ttl_adapter.validate_python(ttl)
         except ValidationError as error:
-            if any(detail["type"] == "value_error" for detail in error.errors()):
-                raise ValueError(
-                    "Storage TTL must be finite and greater than zero",
-                ) from error
-            raise TypeError(
-                "Storage TTL must be an int, float, timedelta, or None",
-            ) from error
-        return cast(float | None, parsed_ttl)
+            invalid_value = any(detail["type"] == "value_error" for detail in error.errors())
+        else:
+            return cast(float | None, parsed_ttl)
+        if invalid_value:
+            raise ValueError(
+                "Storage TTL must be finite and greater than zero",
+            ) from ValueError("Storage TTL validation failed")
+        raise TypeError(
+            "Storage TTL must be an int, float, timedelta, or None",
+        ) from TypeError("Storage TTL validation failed")
 
     def _copy_value(self, value: JSONValue) -> JSONValue:
         return deepcopy(value)

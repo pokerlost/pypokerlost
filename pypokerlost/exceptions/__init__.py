@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pypokerlost.exceptions.api import (
     PokerlostAPIError,
     PokerlostProtocolError,

@@ -17,15 +17,24 @@ class PokerlostMethod[ResultT](ClientContextController, abc.ABC):
     """Typed request fields, RPC metadata, and optional explicit client binding."""
 
     model_config = ConfigDict(
+        allow_inf_nan=False,
         extra="forbid",
         strict=True,
         validate_default=True,
         arbitrary_types_allowed=True,
     )
 
-    __api_method__: ClassVar[RPCOperation]
     __http_method__: ClassVar[HTTPMethod] = "POST"
-    __returning__: ClassVar[Any]
+
+    @property
+    @abc.abstractmethod
+    def __api_method__(self) -> RPCOperation:
+        """Return the complete RPC operation identifier."""
+
+    @property
+    @abc.abstractmethod
+    def __returning__(self) -> Any:
+        """Return the declared response result type."""
 
     async def emit(self, client: Client) -> ResultT:
         return await client(self)

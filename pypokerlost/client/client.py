@@ -3,13 +3,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Self
+from typing import Self, cast
 
 from pypokerlost.client.current_client import use_current_client
 from pypokerlost.client.session import BaseSession, HttpxSession
 from pypokerlost.exceptions import ClientStateError
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.middleware import BaseMiddleware, MiddlewareHandler
+from pypokerlost.request import RPCRequestOptions
 from pypokerlost.storage import BaseStorage, MemoryStorage
 
 
@@ -65,25 +66,58 @@ class Client:
         executing_method = method.model_copy().as_(self)
         middleware = tuple(self._middleware)
         if not middleware:
-            return await self.session(executing_method, timeout=request_timeout)
+            return await self.session(
+                executing_method,
+                timeout=request_timeout,
+                options=RPCRequestOptions(),
+            )
 
-        async def session_handler(
-            next_method: PokerlostMethod[ResultT],
-        ) -> ResultT:
-            return await self.session(next_method, timeout=request_timeout)
+        async def session_handler[NextResultT](
+            next_method: PokerlostMethod[NextResultT],
+            *,
+            options: RPCRequestOptions | None = None,
+        ) -> NextResultT:
+            request_options = options if options is not None else RPCRequestOptions()
+            return await self.session(
+                next_method,
+                timeout=request_timeout,
+                options=request_options,
+            )
 
-        handler: MiddlewareHandler[ResultT] = session_handler
+        handler = cast(MiddlewareHandler, session_handler)
         for component in reversed(middleware):
             handler = self._wrap_middleware(component, handler)
         return await handler(executing_method)
 
-    def _wrap_middleware[ResultT](
+    def _wrap_middleware(
         self,
         middleware: BaseMiddleware,
-        handler: MiddlewareHandler[ResultT],
-    ) -> MiddlewareHandler[ResultT]:
-        async def wrapped_handler(method: PokerlostMethod[ResultT]) -> ResultT:
-            return await middleware(handler, method, self)
+        handler: MiddlewareHandler,
+    ) -> MiddlewareHandler:
+        async def wrapped_handler[ResultT](
+            method: PokerlostMethod[ResultT],
+            *,
+            options: RPCRequestOptions | None = None,
+        ) -> ResultT:
+            request_options = options if options is not None else RPCRequestOptions()
+
+            async def next_handler[NextResultT](
+                next_method: PokerlostMethod[NextResultT],
+                *,
+                options: RPCRequestOptions | None = None,
+            ) -> NextResultT:
+                next_options = options if options is not None else request_options
+                executing_next_method = (
+                    next_method if next_method is method else next_method.model_copy().as_(self)
+                )
+                return await handler(executing_next_method, options=next_options)
+
+            return await middleware(
+                cast(MiddlewareHandler, next_handler),
+                method,
+                self,
+                request_options,
+            )
 
         return wrapped_handler
 

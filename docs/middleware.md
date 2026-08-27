@@ -75,6 +75,7 @@ from time import monotonic
 from pypokerlost import Client
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.middleware import BaseMiddleware, MiddlewareHandler
+from pypokerlost.request import RPCRequestOptions
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +83,10 @@ logger = logging.getLogger(__name__)
 class TimingMiddleware(BaseMiddleware):
     async def __call__[ResultT](
         self,
-        handler: MiddlewareHandler[ResultT],
+        handler: MiddlewareHandler,
         method: PokerlostMethod[ResultT],
         client: Client,
+        options: RPCRequestOptions,
     ) -> ResultT:
         started_at = monotonic()
         try:
@@ -102,10 +104,17 @@ class TimingMiddleware(BaseMiddleware):
 Each component receives the actual executing client and an isolated method copy bound to that
 client. The caller's method object remains unchanged by `Client` execution.
 
-A component may call `handler(method)` zero, one, or multiple times. Calling it zero times
-short-circuits the request; calling it more than once can repeat the underlying RPC operation. Its
-return value becomes the result unless an outer component changes it. Exceptions and cancellation
-propagate normally unless user code deliberately handles them.
+A component may call `handler(method)` zero, one, or multiple times. Omitting `options` inherits the
+immutable options received by the component. Passing `options=...` replaces them for that handler
+call. Calling the handler zero times short-circuits the request; calling it more than once can
+repeat the underlying RPC operation. Its return value becomes the result unless an outer component
+changes it. Exceptions and cancellation propagate normally unless user code deliberately handles
+them.
+
+`MiddlewareHandler` is polymorphic rather than fixed to the outer method's result type. Passing a
+different method copies and binds it to the same client, then executes it through only the remaining
+middleware components. This permits a user-owned authorization component to call a refresh method
+without re-entering itself.
 
 Avoid logging method fields, stored values, headers, credentials, or exception data that may
 contain secrets.
@@ -119,9 +128,10 @@ non-sensitive operation name before continuing:
 class LastOperationMiddleware(BaseMiddleware):
     async def __call__[ResultT](
         self,
-        handler: MiddlewareHandler[ResultT],
+        handler: MiddlewareHandler,
         method: PokerlostMethod[ResultT],
         client: Client,
+        options: RPCRequestOptions,
     ) -> ResultT:
         await client.storage.set(
             "middleware.last_operation",
@@ -136,27 +146,36 @@ results. See [`storage.md`](storage.md) for accepted values, expiration, and sec
 ## Documentation-only authorization skeleton
 
 Authorization policy is owned by the consuming application. A user-defined component can obtain
-service-specific state and prepare the method before continuing:
+service-specific state and add a per-request header without mutating a shared HTTP client:
 
 ```python
 class AuthorizationMiddleware(BaseMiddleware):
     async def __call__[ResultT](
         self,
-        handler: MiddlewareHandler[ResultT],
+        handler: MiddlewareHandler,
         method: PokerlostMethod[ResultT],
         client: Client,
+        options: RPCRequestOptions,
     ) -> ResultT:
-        authorized_method = await authorize_for_service(
+        access_token = await access_token_for_service(
             storage=client.storage,
             method=method,
         )
-        return await handler(authorized_method)
+        authorized_options = options.with_headers(
+            {"Authorization": f"Bearer {access_token}"},
+        )
+        return await handler(method, options=authorized_options)
 ```
 
-`authorize_for_service()` and `AuthorizationMiddleware` are documentation-only, user-owned
-artifacts, not SDK APIs. The service contract must define any credential fields or transport
-behavior. The SDK provides no built-in authorization, credential model, header injection, refresh,
-or retry behavior.
+`access_token_for_service()` and `AuthorizationMiddleware` are documentation-only, user-owned
+artifacts, not SDK APIs. If policy requires refresh, the component can call a service-defined
+`RefreshTokenMethod` through `handler(...)`; that call uses the remaining chain and may have a
+different result type. It can then save the returned token with an explicit storage TTL and invoke
+the original method once with updated options.
+
+The SDK provides the typed header transport but no built-in authorization, credential model,
+refresh policy, token keys, or retry behavior. Request options and transport requests are immutable
+and copy-owned; never log their headers.
 
 ## Avoid recursive client calls
 

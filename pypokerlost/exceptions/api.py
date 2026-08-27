@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 class PokerlostAPIError(PokerlostError):
     """Raised when a valid response envelope reports an operation failure."""
 
-    method: PokerlostMethod[Any]
     operation: str
     status_code: int
     error: str
@@ -26,7 +25,6 @@ class PokerlostAPIError(PokerlostError):
         error: str,
         error_message: str,
     ) -> None:
-        self.method = method
         self.operation = operation
         self.status_code = status_code
         self.error = error
@@ -47,7 +45,6 @@ class PokerlostProtocolError(PokerlostError):
         operation: str,
         status_code: int,
     ) -> None:
-        self.method = method
         self.operation = operation
         self.status_code = status_code
         super().__init__(

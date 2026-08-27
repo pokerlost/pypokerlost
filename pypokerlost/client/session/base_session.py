@@ -5,7 +5,7 @@ from types import TracebackType
 from typing import Self
 
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.request import RPCRequestBuilder
+from pypokerlost.request import RPCRequestBuilder, RPCRequestOptions
 from pypokerlost.response import BaseResponseHandler
 
 DEFAULT_TIMEOUT = 10
@@ -44,15 +44,24 @@ class BaseSession(abc.ABC):
         self,
         method: PokerlostMethod[ResultT],
         timeout: int | None = None,
+        *,
+        options: RPCRequestOptions | None = None,
     ) -> ResultT:
         effective_timeout = self.timeout if timeout is None else timeout
-        return await self.make_request(method, timeout=effective_timeout)
+        request_options = options if options is not None else RPCRequestOptions()
+        return await self.make_request(
+            method,
+            timeout=effective_timeout,
+            options=request_options,
+        )
 
     @abc.abstractmethod
     async def make_request[ResultT](
         self,
         method: PokerlostMethod[ResultT],
         timeout: int,
+        *,
+        options: RPCRequestOptions,
     ) -> ResultT:
         """Send one method and return its declared result."""
 

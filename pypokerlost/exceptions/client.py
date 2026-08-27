@@ -32,7 +32,6 @@ class ClientStateError(ClientError):
 class ClientDecodeError(ClientError):
     """Raised when a response violates the declared wire or result contract."""
 
-    method: PokerlostMethod[Any]
     operation: str
     status_code: int
 
@@ -43,7 +42,6 @@ class ClientDecodeError(ClientError):
         operation: str,
         status_code: int,
     ) -> None:
-        self.method = method
         self.operation = operation
         self.status_code = status_code
         super().__init__(
@@ -54,7 +52,6 @@ class ClientDecodeError(ClientError):
 class ClientConnectionError(ClientError):
     """Raised when the HTTP transport cannot complete a request."""
 
-    method: PokerlostMethod[Any]
     operation: str
 
     def __init__(
@@ -63,7 +60,6 @@ class ClientConnectionError(ClientError):
         method: PokerlostMethod[Any],
         operation: str,
     ) -> None:
-        self.method = method
         self.operation = operation
         super().__init__(f"Connection failed; operation={operation!r}")
 
@@ -71,7 +67,6 @@ class ClientConnectionError(ClientError):
 class ClientTimeoutError(ClientError):
     """Raised when an HTTP request exceeds its configured timeout."""
 
-    method: PokerlostMethod[Any]
     operation: str
 
     def __init__(
@@ -80,6 +75,5 @@ class ClientTimeoutError(ClientError):
         method: PokerlostMethod[Any],
         operation: str,
     ) -> None:
-        self.method = method
         self.operation = operation
         super().__init__(f"Request timed out; operation={operation!r}")

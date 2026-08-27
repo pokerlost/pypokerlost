@@ -13,3 +13,4 @@ class RPCRequest:
     http_method: HTTPMethod
     url: str
     content: bytes
+    headers: tuple[tuple[str, str], ...] = ()

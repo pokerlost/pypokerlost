@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pypokerlost.types import StorageKey, StorageTTL
 
 from .base_storage import BaseStorage

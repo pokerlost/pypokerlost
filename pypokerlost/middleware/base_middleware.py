@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 import abc
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from pypokerlost.methods import PokerlostMethod
+from pypokerlost.request import RPCRequestOptions
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
 
-type MiddlewareHandler[ResultT] = Callable[
-    [PokerlostMethod[ResultT]],
-    Awaitable[ResultT],
-]
+
+class MiddlewareHandler(Protocol):
+    """Execute any method through the remaining middleware chain."""
+
+    async def __call__[ResultT](
+        self,
+        method: PokerlostMethod[ResultT],
+        *,
+        options: RPCRequestOptions | None = None,
+    ) -> ResultT:
+        """Execute ``method``, optionally replacing inherited request options."""
 
 
 class BaseMiddleware(abc.ABC):
@@ -21,8 +28,9 @@ class BaseMiddleware(abc.ABC):
     @abc.abstractmethod
     async def __call__[ResultT](
         self,
-        handler: MiddlewareHandler[ResultT],
+        handler: MiddlewareHandler,
         method: PokerlostMethod[ResultT],
         client: Client,
+        options: RPCRequestOptions,
     ) -> ResultT:
         """Wrap ``handler`` for one bound RPC method execution."""

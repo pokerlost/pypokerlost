@@ -19,7 +19,8 @@ latest direct user requirement
 
 - The repository root is `pokerlost/`; the distribution and import package are `pypokerlost`.
 - Runtime code lives directly under `pypokerlost/`. Do not add a `src/` layout or nested repository.
-- This is a hand-maintained asynchronous SDK, not generated code.
+- The asynchronous SDK core is hand-maintained; concrete method and result modules may be
+  generator-owned.
 - Runtime dependencies remain `pydantic` and `httpx`. Do not add, remove, replace, upgrade,
   downgrade, or change dependency constraints without the latest direct user requirement.
 - Project-owned identifiers use `middleware` as a singular collective noun.
@@ -41,13 +42,18 @@ latest direct user requirement
   middleware list, copies optional constructor input, and supports append-only registration through
   `add_middleware()`. Each request takes an immutable tuple snapshot before building its chain; the
   first configured component is the outermost.
+- `MiddlewareHandler` is polymorphic over each method it receives, so middleware may execute a
+  different result type through the remaining chain. `RPCRequestOptions` is the one typed
+  per-request transport extension and owns immutable ordered string headers. Omitting options in a
+  next-handler call inherits the current options; supplying options replaces them for that call.
 - Middleware wraps only RPC execution through `Client.make_request()`. Do not pass it into client,
   session, storage, or application lifecycle operations, or into session, request, response,
   storage, method, or OpenAPI layers. The SDK provides no built-in authorization or retry
   middleware.
 - Request, response, and session layers must not import `Client`. Do not pass `Client`, arbitrary
   dictionaries, generic context bags, service locators, dependency containers, or middleware
-  contexts through those layers as future extension hooks.
+  contexts through those layers as future extension hooks. `RPCRequestOptions` and its copied
+  immutable headers are the sole typed exception to that restriction.
 - `ApplicationResponse` and `ResponseModel` are the fixed public wire contracts.
 - Do not add tests, CI/CD, Docker Compose, runtime containers, Helm, authentication, retries,
   streaming, service routing, or code generation unless the latest direct user requirement
@@ -104,9 +110,14 @@ latest direct user requirement
 - Typer and aiofiles remain development/tooling dependencies. Do not duplicate or move them into
   runtime dependencies, and do not add YAML input or another CLI framework.
 - The manifest records generator version, OpenAPI version, canonical source hash, and owned files.
+  Manifest state is scoped by the canonical output root, so distinct `--output` roots cannot share
+  version or ownership history.
   Owned paths are normalized relative Python paths inside the generated service subpackage. Only
   manifest-owned generated files may be removed; manual files are not overwritten without an
   explicit `--force`.
+- OpenAPI document parsing retains component schemas as JSON values. Strict generator-schema
+  validation begins only when a selected request or successful response makes a schema reachable;
+  unused framework-owned components cannot block generation.
 - Both generator and OpenAPI contract versions use `MAJOR.MINOR.PATCH`. Generator `MAJOR` covers an
   incompatible generated layout, generated public API, manifest format, or CLI change; `MINOR`
   covers backward-compatible OpenAPI support or optional CLI capability; `PATCH` covers bug fixes
@@ -213,6 +224,11 @@ A module and its main artifact must communicate their responsibility.
 
 ### Imports
 
+- Every Python source file, including package initializers, scripts, and generator-owned modules,
+  must contain exactly one `from __future__ import annotations`. Place it after an optional shebang
+  and encoding comment and after the module docstring, when present, but before every ordinary
+  import and all executable code. Ordinary leading comments may remain before it, and Python source
+  renderers must emit it in the same position.
 - Use explicit imports; wildcard imports are forbidden.
 - Abstract classes use `import abc` with `abc.ABC` and `abc.abstractmethod`. Do not use
   `from abc import ...`.
@@ -351,8 +367,9 @@ A module and its main artifact must communicate their responsibility.
 - After Pydantic validation, internal code may rely on the validated type and must not repeat
   defensive checks.
 - Preserve an established public `TypeError` or `ValueError` contract by translating
-  `ValidationError` once at the subsystem boundary and retaining it as `__cause__`; translated
-  messages must not expose sensitive input.
+  `ValidationError` once at the subsystem boundary. Preserve only a safe failure category through
+  `__cause__`; never retain an input-bearing `ValidationError`, and never expose sensitive input in
+  translated messages or metadata.
 
 ### Errors and security
 
@@ -365,7 +382,8 @@ A module and its main artifact must communicate their responsibility.
 - Public exception messages, exception metadata, and logs must never expose raw response bodies,
   request bodies, headers, cookies, authorization values, access tokens, refresh tokens,
   credentials, private keys, or other secrets.
-- Preserve original transport and decoder failures through `__cause__`.
+- Preserve transport and decoder failure categories through safe sanitized `__cause__` values.
+  Never retain an external exception that owns a request, response body, headers, or other input.
 - Do not swallow programming errors.
 
 ### Comments and docstrings

@@ -18,7 +18,9 @@ inject any `BaseSession` and `BaseStorage`. The fixed default gateway is
 
 Caller-defined middleware is an ordered, client-owned collection. Constructor input is copied,
 `add_middleware()` appends one component, and every request executes against an immutable snapshot
-with the first configured component outermost.
+with the first configured component outermost. A polymorphic next handler can execute another
+method through the remaining chain, while immutable `RPCRequestOptions` carries copy-owned headers
+for only that execution.
 
 `Application` owns one client and one user-supplied async-context-manager lifecycle. `run()` owns an
 event loop and performs graceful supported `SIGINT`/`SIGTERM` cancellation and cleanup;
@@ -34,15 +36,19 @@ runtime SDK facility.
 
 - `PokerlostMethod[ResultT]` is the only production method base.
 - The operation string is the complete RPC identity; no service metadata or routing exists.
-- Requests contain only operation, HTTP method, URL, and immutable UTF-8 content.
-- Pydantic JSON-mode serialization is the sole request normalization layer.
+- Requests contain only operation, HTTP method, URL, immutable UTF-8 content, and immutable string
+  headers.
+- Pydantic JSON-mode serialization is the sole request normalization layer. Request and generic
+  JSON-value boundaries reject non-finite floats, and the default encoder emits strict JSON.
 - Storage is generic client-owned `JSONValue` state and remains outside the RPC transport pipeline.
 - Storage accepts optional positive finite relative TTL; expired entries behave as missing entries.
 - `ApplicationResponseHandler` interprets the fixed `ApplicationResponse` envelope and validates
-  the declared result type.
+  the declared result type with JSON semantics.
 - Every valid failed envelope raises `PokerlostAPIError`; its stable `error` code identifies the
   business failure. Successful envelopes paired with non-2xx status raise
-  `PokerlostProtocolError`.
+  `PokerlostProtocolError`. RPC exceptions retain only safe scalar metadata, never a method or
+  client reference. Safe built-in causes preserve external failure categories without retaining
+  transport requests or decoder input.
 - `RPCOpenAPIExtra` emits generic OpenAPI security requirements using service-defined scope strings.
 
 ## Non-goals

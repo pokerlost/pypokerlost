@@ -59,18 +59,12 @@ from pypokerlost.types import HTTPMethod, JSONValue, RPCOperation
 GENERATOR_VERSION_TEXT = "0.2.1"
 OPENAPI_ENDPOINT = "/openapi.get"
 DEFAULT_OUTPUT = Path("pypokerlost/methods")
-MANIFEST_DIRECTORY = Path(__file__).resolve().parent / ".generated_methods"
-EXPLICIT_NULL_REJECTOR_SOURCE = (
-    "def _reject_explicit_null[ValueT](value: ValueT | None) -> ValueT:\n"
-    "    if value is None:\n"
-    '        raise ValueError("Field does not accept null")\n'
-    "    return value"
-)
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+MANIFEST_DIRECTORY = REPOSITORY_ROOT / "scripts" / ".generated_methods"
 
 SYSTEM_PATHS = frozenset({"/", OPENAPI_ENDPOINT})
 
 VERSION_PATTERN = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
-RPC_OPERATION_PATTERN = r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$"
 SERVICE_ID_PATTERN = r"^[A-Za-z][A-Za-z0-9_-]*$"
 PYTHON_CLASS_PATTERN = r"^[A-Z][A-Za-z0-9]*$"
 PYTHON_FIELD_PATTERN = r"^[a-z_][a-z0-9_]*$"
@@ -99,18 +93,19 @@ RESERVED_GENERATED_CLASS_NAMES = frozenset(
     {
         "Annotated",
         "BaseModel",
-        "BeforeValidator",
         "ConfigDict",
         "Field",
         "JSONValue",
         "Literal",
         "PokerlostMethod",
+        "TypeAdapter",
         "UUID",
     }
 )
 RESERVED_GENERATED_FIELD_NAMES = frozenset(
     {
         "as_",
+        "cast",
         "client",
         "construct",
         "copy",
@@ -168,14 +163,6 @@ def validate_generated_field_name(value: str) -> str:
         raise ValueError("Generated field names cannot start with an underscore")
     if value.startswith("model_") or value in RESERVED_GENERATED_FIELD_NAMES:
         raise ValueError("Generated field name conflicts with the public method model API")
-    return value
-
-
-def validate_generated_rpc_operation(
-    value: RPCOperation,
-) -> RPCOperation:
-    if re.fullmatch(RPC_OPERATION_PATTERN, value) is None:
-        raise ValueError("Generated RPC operation must use lowercase namespace.method syntax")
     return value
 
 
@@ -248,10 +235,6 @@ VersionString = Annotated[
     str,
     StringConstraints(strict=True, pattern=VERSION_PATTERN),
 ]
-GeneratedRPCOperation = Annotated[
-    RPCOperation,
-    AfterValidator(validate_generated_rpc_operation),
-]
 ServiceID = Annotated[
     str,
     StringConstraints(strict=True, min_length=1, pattern=SERVICE_ID_PATTERN),
@@ -273,7 +256,7 @@ PythonPackageName = Annotated[
     AfterValidator(reject_python_keyword),
 ]
 
-RPC_OPERATION_ADAPTER = TypeAdapter(GeneratedRPCOperation)
+RPC_OPERATION_ADAPTER: TypeAdapter[RPCOperation] = TypeAdapter(RPCOperation)
 PYTHON_CLASS_ADAPTER = TypeAdapter(PythonClassName)
 PYTHON_PACKAGE_ADAPTER = TypeAdapter(PythonPackageName)
 
@@ -508,6 +491,13 @@ class JSONSchema(BaseModel):
             not declared_kinds or not declared_kinds.issubset({"null", "string"})
         ):
             raise ValueError("JSON Schema string format requires a string schema")
+        if self.format is not None and any(
+            value is not None for value in (self.min_length, self.max_length, self.pattern)
+        ):
+            raise ValueError(
+                "formatted string schemas cannot combine format with "
+                "minLength, maxLength, or pattern"
+            )
         if any(
             value is not None for value in (self.min_length, self.max_length, self.pattern)
         ) and (not declared_kinds or not declared_kinds.issubset({"null", "string"})):
@@ -544,11 +534,11 @@ class JSONSchema(BaseModel):
 
 
 class OpenAPIMediaType(BaseModel):
-    """OpenAPI media type containing one schema."""
+    """OpenAPI media type retaining a schema until it becomes generation-reachable."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    schema_: JSONSchema | None = Field(default=None, alias="schema")
+    schema_: JSONValue = Field(default=None, alias="schema")
 
     @model_validator(mode="after")
     def validate_supported_media_type(self) -> Self:
@@ -623,9 +613,9 @@ class OpenAPIOperation(BaseModel):
 
     operation_id: NonEmptyString | None = Field(default=None, alias="operationId")
     deprecated: bool = False
-    request_body: OpenAPIRequestBody | None = Field(default=None, alias="requestBody")
+    request_body: JSONValue = Field(default=None, alias="requestBody")
     parameters: list[OpenAPIParameter] = Field(default_factory=list)
-    responses: dict[str, OpenAPIResponse]
+    responses: dict[str, JSONValue]
 
     @model_validator(mode="after")
     def validate_supported_operation(self) -> Self:
@@ -661,16 +651,16 @@ class OpenAPIPathItem(BaseModel):
 
 
 class OpenAPIComponents(BaseModel):
-    """OpenAPI components used by service contracts."""
+    """OpenAPI components retained until an operation makes them reachable."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    schemas: dict[str, JSONSchema] = Field(default_factory=dict)
-    request_bodies: dict[str, OpenAPIRequestBody] = Field(
+    schemas: dict[str, JSONValue] = Field(default_factory=dict)
+    request_bodies: dict[str, JSONValue] = Field(
         default_factory=dict,
         alias="requestBodies",
     )
-    responses: dict[str, OpenAPIResponse] = Field(default_factory=dict)
+    responses: dict[str, JSONValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_supported_components(self) -> Self:
@@ -806,6 +796,14 @@ class ImportSpec:
     name: str
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class RenderedConstraint:
+    """Private generated alias preserving constraints in any type position."""
+
+    name: str
+    source: str
+
+
 @dataclass(frozen=True, slots=True)
 class RenderedType:
     """Generated Python type expression plus required imports and model references."""
@@ -813,6 +811,7 @@ class RenderedType:
     expression: str
     imports: frozenset[ImportSpec] = frozenset()
     model_refs: frozenset[str] = frozenset()
+    constraints: frozenset[RenderedConstraint] = frozenset()
 
     def nullable(self) -> RenderedType:
         if self.expression == "None" or self.expression.endswith(" | None"):
@@ -821,6 +820,7 @@ class RenderedType:
             expression=f"{self.expression} | None",
             imports=self.imports,
             model_refs=self.model_refs,
+            constraints=self.constraints,
         )
 
 
@@ -830,7 +830,7 @@ class OperationSpec:
 
     path: str
     http_method: HTTPMethod
-    operation_id: GeneratedRPCOperation
+    operation_id: RPCOperation
     class_name: str
     file_name: str
     request_schema: JSONSchema | None
@@ -850,33 +850,134 @@ class OpenAPIResolver:
 
     def __init__(self, document: OpenAPIDocument) -> None:
         self._document = document
+        self._schemas: dict[str, JSONSchema] = {}
+        self._resolved_schemas: dict[str, JSONSchema] = {}
+        self._request_bodies: dict[str, OpenAPIRequestBody] = {}
+        self._responses: dict[str, OpenAPIResponse] = {}
+
+    def parse_schema(self, value: JSONValue, *, location: str) -> JSONSchema:
+        try:
+            return JSONSchema.model_validate(value)
+        except ValidationError as error:
+            raise GenerationError(
+                f"invalid reachable JSON Schema at {location}: {format_pydantic_error(error)}"
+            ) from error
+
+    def component_schema(self, name: str) -> JSONSchema:
+        cached = self._schemas.get(name)
+        if cached is not None:
+            return cached
+
+        try:
+            value = self._document.components.schemas[name]
+        except KeyError as error:
+            raise GenerationError(
+                f"unknown schema reference: #/components/schemas/{name}"
+            ) from error
+
+        schema = self.parse_schema(value, location=f"components.schemas.{name}")
+        self._schemas[name] = schema
+        return schema
 
     def resolve_schema(self, schema: JSONSchema) -> JSONSchema:
-        if schema.ref is None:
-            return schema
-        name = self.schema_ref_name(schema.ref)
+        current = schema
+        traversed: list[str] = []
+
+        while current.ref is not None:
+            name = self.schema_ref_name(current.ref)
+            if name in traversed:
+                cycle_start = traversed.index(name)
+                cycle = (*traversed[cycle_start:], name)
+                references = " -> ".join(f"#/components/schemas/{item}" for item in cycle)
+                raise GenerationError(f"cyclic schema reference: {references}")
+
+            traversed.append(name)
+            cached = self._resolved_schemas.get(name)
+            if cached is not None:
+                current = cached
+                break
+            current = self.component_schema(name)
+
+        for name in traversed:
+            self._resolved_schemas[name] = current
+        return current
+
+    def parse_request_body(self, value: JSONValue, *, location: str) -> OpenAPIRequestBody:
         try:
-            return self._document.components.schemas[name]
-        except KeyError as error:
-            raise GenerationError(f"unknown schema reference: {schema.ref}") from error
+            return OpenAPIRequestBody.model_validate(value)
+        except ValidationError as error:
+            raise GenerationError(
+                f"invalid reachable OpenAPI request body at {location}: "
+                f"{format_pydantic_error(error)}"
+            ) from error
 
     def resolve_request_body(self, body: OpenAPIRequestBody) -> OpenAPIRequestBody:
-        if body.ref is None:
-            return body
-        name = self._component_ref_name(body.ref, "requestBodies")
+        current = body
+        traversed: list[str] = []
+
+        while current.ref is not None:
+            name = self._component_ref_name(current.ref, "requestBodies")
+            if name in traversed:
+                cycle_start = traversed.index(name)
+                cycle = (*traversed[cycle_start:], name)
+                references = " -> ".join(f"#/components/requestBodies/{item}" for item in cycle)
+                raise GenerationError(f"cyclic request body reference: {references}")
+
+            traversed.append(name)
+            cached = self._request_bodies.get(name)
+            if cached is not None:
+                current = cached
+                break
+            try:
+                value = self._document.components.request_bodies[name]
+            except KeyError as error:
+                raise GenerationError(f"unknown request body reference: {current.ref}") from error
+            current = self.parse_request_body(
+                value,
+                location=f"components.requestBodies.{name}",
+            )
+
+        for name in traversed:
+            self._request_bodies[name] = current
+        return current
+
+    def parse_response(self, value: JSONValue, *, location: str) -> OpenAPIResponse:
         try:
-            return self._document.components.request_bodies[name]
-        except KeyError as error:
-            raise GenerationError(f"unknown request body reference: {body.ref}") from error
+            return OpenAPIResponse.model_validate(value)
+        except ValidationError as error:
+            raise GenerationError(
+                f"invalid reachable OpenAPI response at {location}: {format_pydantic_error(error)}"
+            ) from error
 
     def resolve_response(self, response: OpenAPIResponse) -> OpenAPIResponse:
-        if response.ref is None:
-            return response
-        name = self._component_ref_name(response.ref, "responses")
-        try:
-            return self._document.components.responses[name]
-        except KeyError as error:
-            raise GenerationError(f"unknown response reference: {response.ref}") from error
+        current = response
+        traversed: list[str] = []
+
+        while current.ref is not None:
+            name = self._component_ref_name(current.ref, "responses")
+            if name in traversed:
+                cycle_start = traversed.index(name)
+                cycle = (*traversed[cycle_start:], name)
+                references = " -> ".join(f"#/components/responses/{item}" for item in cycle)
+                raise GenerationError(f"cyclic response reference: {references}")
+
+            traversed.append(name)
+            cached = self._responses.get(name)
+            if cached is not None:
+                current = cached
+                break
+            try:
+                value = self._document.components.responses[name]
+            except KeyError as error:
+                raise GenerationError(f"unknown response reference: {current.ref}") from error
+            current = self.parse_response(
+                value,
+                location=f"components.responses.{name}",
+            )
+
+        for name in traversed:
+            self._responses[name] = current
+        return current
 
     def schema_ref_name(self, ref: str) -> str:
         return self._component_ref_name(ref, "schemas")
@@ -899,57 +1000,74 @@ class SchemaRenderer:
     def __init__(self, resolver: OpenAPIResolver) -> None:
         self._resolver = resolver
 
-    def render_type(self, schema: JSONSchema) -> RenderedType:
+    def render_type(
+        self,
+        schema: JSONSchema,
+        *,
+        include_constraints: bool = True,
+    ) -> RenderedType:
         if schema.ref is not None:
             name = self._resolver.schema_ref_name(schema.ref)
             validated_name = PYTHON_CLASS_ADAPTER.validate_python(name)
             return RenderedType(validated_name, model_refs=frozenset({validated_name}))
 
         if schema.any_of:
-            return self._render_union(schema.any_of)
-        if schema.one_of:
-            return self._render_union(schema.one_of)
-        if schema.all_of:
+            result = self._render_union(schema.any_of)
+        elif schema.one_of:
+            result = self._render_union(schema.one_of)
+        elif schema.all_of:
             normalized = self.merge_all_of(schema)
-            return self.render_type(normalized)
-
-        if schema.enum is not None:
+            return self.render_type(normalized, include_constraints=include_constraints)
+        elif schema.enum is not None:
             if not schema.enum:
                 raise GenerationError("empty JSON Schema enum is unsupported")
-            return RenderedType(
+            result = RenderedType(
                 expression=f"Literal[{', '.join(python_literal(item) for item in schema.enum)}]",
                 imports=frozenset({ImportSpec("typing", "Literal")}),
             )
-
-        if "const" in schema.model_fields_set:
-            return RenderedType(
+        elif "const" in schema.model_fields_set:
+            result = RenderedType(
                 expression=f"Literal[{python_literal(schema.const)}]",
                 imports=frozenset({ImportSpec("typing", "Literal")}),
             )
-
-        schema_types = self._schema_types(schema)
-        nullable = "null" in schema_types
-        concrete_types = [item for item in schema_types if item != "null"]
-
-        if len(concrete_types) > 1:
-            rendered = [self._render_primitive_type(item, schema) for item in concrete_types]
-            result = self._combine_union(rendered)
-        elif len(concrete_types) == 1:
-            result = self._render_primitive_type(concrete_types[0], schema)
-        elif nullable:
-            return RenderedType("None")
-        elif schema.properties or isinstance(schema.additional_properties, (bool, JSONSchema)):
-            result = self._render_primitive_type("object", schema)
         else:
-            raise GenerationError(
-                f"schema has no supported type information: {schema.model_dump(by_alias=True)}"
-            )
+            schema_types = self._schema_types(schema)
+            nullable = "null" in schema_types
+            concrete_types = [item for item in schema_types if item != "null"]
 
-        return result.nullable() if nullable else result
+            if len(concrete_types) > 1:
+                rendered = [self._render_primitive_type(item, schema) for item in concrete_types]
+                result = self._combine_union(rendered)
+            elif len(concrete_types) == 1:
+                result = self._render_primitive_type(concrete_types[0], schema)
+            elif nullable:
+                result = RenderedType("None")
+            elif schema.properties or isinstance(schema.additional_properties, (bool, JSONSchema)):
+                result = self._render_primitive_type("object", schema)
+            else:
+                raise GenerationError(
+                    f"schema has no supported type information: {schema.model_dump(by_alias=True)}"
+                )
 
-    def merge_all_of(self, schema: JSONSchema) -> JSONSchema:
+            if nullable:
+                result = result.nullable()
+
+        return self._with_constraints(result, schema) if include_constraints else result
+
+    def merge_all_of(
+        self,
+        schema: JSONSchema,
+        *,
+        active_schemas: frozenset[int] | None = None,
+    ) -> JSONSchema:
         if not schema.all_of:
             return schema
+
+        schema_identity = id(schema)
+        active = active_schemas or frozenset()
+        if schema_identity in active:
+            raise GenerationError("cyclic allOf schema composition is unsupported")
+        active = active | {schema_identity}
 
         properties: dict[str, JSONSchema] = {}
         required: list[str] = []
@@ -959,7 +1077,7 @@ class SchemaRenderer:
         for item in schema.all_of:
             resolved = self._resolver.resolve_schema(item)
             if resolved.all_of:
-                resolved = self.merge_all_of(resolved)
+                resolved = self.merge_all_of(resolved, active_schemas=active)
 
             schema_types = self._schema_types(resolved)
             if schema_types and any(value not in {"object", "null"} for value in schema_types):
@@ -1004,6 +1122,43 @@ class SchemaRenderer:
                 if schema.additional_properties is not None
                 else additional_properties
             ),
+        )
+
+    def _with_constraints(self, rendered: RenderedType, schema: JSONSchema) -> RenderedType:
+        constraints = self.field_constraints(schema)
+        if not constraints:
+            return rendered
+
+        rendered_arguments = render_keyword_arguments(constraints)
+        identity = f"{rendered.expression}\0{rendered_arguments}"
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+        alias_name = f"_Constrained{digest}"
+        alias_source = "\n".join(
+            (
+                f"type {alias_name} = Annotated[",
+                f"    {rendered.expression},",
+                "    Field(",
+                *(
+                    f"        {name}={python_literal(value)},"
+                    for name, value in constraints.items()
+                ),
+                "    ),",
+                "]",
+            )
+        )
+
+        return RenderedType(
+            expression=alias_name,
+            imports=rendered.imports
+            | frozenset(
+                {
+                    ImportSpec("typing", "Annotated"),
+                    ImportSpec("pydantic", "Field"),
+                }
+            ),
+            model_refs=rendered.model_refs,
+            constraints=rendered.constraints
+            | frozenset({RenderedConstraint(alias_name, alias_source)}),
         )
 
     def field_constraints(self, schema: JSONSchema) -> dict[str, JSONValue]:
@@ -1091,10 +1246,12 @@ class SchemaRenderer:
         expressions: list[str] = []
         imports: set[ImportSpec] = set()
         refs: set[str] = set()
+        constraints: set[RenderedConstraint] = set()
 
         for item in rendered:
             imports.update(item.imports)
             refs.update(item.model_refs)
+            constraints.update(item.constraints)
             if item.expression not in expressions:
                 expressions.append(item.expression)
 
@@ -1105,6 +1262,7 @@ class SchemaRenderer:
             expression=" | ".join(expressions),
             imports=frozenset(imports),
             model_refs=frozenset(refs),
+            constraints=frozenset(constraints),
         )
 
     def _render_primitive_type(self, schema_type: str, schema: JSONSchema) -> RenderedType:
@@ -1146,6 +1304,7 @@ class SchemaRenderer:
                 expression=f"list[{item.expression}]",
                 imports=item.imports,
                 model_refs=item.model_refs,
+                constraints=item.constraints,
             )
 
         if schema_type == "object":
@@ -1161,6 +1320,7 @@ class SchemaRenderer:
                     expression=f"dict[str, {value.expression}]",
                     imports=value.imports,
                     model_refs=value.model_refs,
+                    constraints=value.constraints,
                 )
             if additional is False:
                 raise GenerationError(
@@ -1299,7 +1459,10 @@ class MethodGenerator:
                         f"{operation_id} uses unsupported OpenAPI parameters: {parameter_list}"
                     )
 
-                request_schema, request_ref = self._request_schema(operation)
+                request_schema, request_ref = self._request_schema(
+                    operation,
+                    operation_id,
+                )
                 result_schema = self._result_schema(operation, operation_id)
 
                 class_name = self._method_class_name(operation_id, request_ref)
@@ -1333,11 +1496,16 @@ class MethodGenerator:
     def _request_schema(
         self,
         operation: OpenAPIOperation,
+        operation_id: RPCOperation,
     ) -> tuple[JSONSchema | None, str | None]:
         if operation.request_body is None:
             return None, None
 
-        body = self.resolver.resolve_request_body(operation.request_body)
+        body_node = self.resolver.parse_request_body(
+            operation.request_body,
+            location=f"{operation_id}.requestBody",
+        )
+        body = self.resolver.resolve_request_body(body_node)
         unsupported_content = sorted(set(body.content) - {"application/json"})
         if unsupported_content:
             content_types = ", ".join(unsupported_content)
@@ -1348,7 +1516,10 @@ class MethodGenerator:
         if media is None or media.schema_ is None:
             raise GenerationError("RPC requestBody must define application/json schema")
 
-        request_schema = media.schema_
+        request_schema = self.resolver.parse_schema(
+            media.schema_,
+            location=f"{operation_id}.requestBody.content.application/json.schema",
+        )
         request_ref = (
             self.resolver.schema_ref_name(request_schema.ref)
             if request_schema.ref is not None
@@ -1373,7 +1544,7 @@ class MethodGenerator:
     def _result_schema(
         self,
         operation: OpenAPIOperation,
-        operation_id: GeneratedRPCOperation,
+        operation_id: RPCOperation,
     ) -> JSONSchema:
         success_responses: list[tuple[int, JSONSchema]] = []
 
@@ -1384,7 +1555,11 @@ class MethodGenerator:
             if not 200 <= status_code < 300:
                 continue
 
-            response = self.resolver.resolve_response(response_node)
+            parsed_response = self.resolver.parse_response(
+                response_node,
+                location=f"{operation_id}.responses.{status}",
+            )
+            response = self.resolver.resolve_response(parsed_response)
             unsupported_content = sorted(set(response.content) - {"application/json"})
             if unsupported_content:
                 content_types = ", ".join(unsupported_content)
@@ -1397,7 +1572,14 @@ class MethodGenerator:
                 raise GenerationError(
                     f"{operation_id} success response {status} must define application/json schema"
                 )
-            success_responses.append((status_code, media.schema_))
+            success_schema = self.resolver.parse_schema(
+                media.schema_,
+                location=f"{operation_id}.responses.{status}.content.application/json.schema",
+            )
+            success_schema = self.resolver.resolve_schema(success_schema)
+            if success_schema.all_of:
+                success_schema = self.schemas.merge_all_of(success_schema)
+            success_responses.append((status_code, success_schema))
 
         if not success_responses:
             raise GenerationError(f"{operation_id} has no JSON 2xx success response")
@@ -1407,9 +1589,7 @@ class MethodGenerator:
         if len(canonical) != 1:
             raise GenerationError(f"{operation_id} has multiple incompatible 2xx response schemas")
 
-        envelope_schema = self.resolver.resolve_schema(success_responses[0][1])
-        if envelope_schema.all_of:
-            envelope_schema = self.schemas.merge_all_of(envelope_schema)
+        envelope_schema = success_responses[0][1]
 
         self._validate_application_response_schema(
             operation_id,
@@ -1484,18 +1664,7 @@ class MethodGenerator:
                     refs.update(self.schemas.collect_refs(property_schema))
             refs.update(self.schemas.collect_refs(operation.result_schema))
 
-        expanded = set(refs)
-        pending = list(refs)
-        while pending:
-            name = pending.pop()
-            schema = self.document.components.schemas[name]
-            nested = self.schemas.collect_refs(schema)
-            for ref in nested:
-                if ref not in expanded:
-                    expanded.add(ref)
-                    pending.append(ref)
-
-        return sorted(expanded)
+        return sorted(refs)
 
     def _render_models(self, model_names: Sequence[str]) -> str:
         imports: set[ImportSpec] = {
@@ -1504,12 +1673,14 @@ class MethodGenerator:
         }
         model_blocks: list[str] = []
         class_names: list[str] = []
+        constraint_definitions: set[RenderedConstraint] = set()
 
         for name in model_names:
             name = PYTHON_CLASS_ADAPTER.validate_python(name)
-            schema = self.document.components.schemas[name]
-            block, block_imports, is_class = self._render_component(name, schema)
+            schema = self.resolver.component_schema(name)
+            block, block_imports, block_constraints, is_class = self._render_component(name, schema)
             imports.update(block_imports)
+            constraint_definitions.update(block_constraints)
             model_blocks.append(block)
             if is_class:
                 class_names.append(name)
@@ -1520,6 +1691,7 @@ class MethodGenerator:
         base = (
             "class _GeneratedModel(BaseModel):\n"
             "    model_config = ConfigDict(\n"
+            "        allow_inf_nan=False,\n"
             '        extra="forbid",\n'
             "        frozen=True,\n"
             "        strict=True,\n"
@@ -1531,10 +1703,11 @@ class MethodGenerator:
         if class_names:
             rebuild = "\n\n\n" + "\n".join(f"{name}.model_rebuild()" for name in class_names)
 
-        definitions = [base, *model_blocks]
-        if ImportSpec("pydantic", "BeforeValidator") in imports:
-            definitions.insert(0, EXPLICIT_NULL_REJECTOR_SOURCE)
-
+        definitions = (
+            base,
+            *render_constraint_definitions(constraint_definitions),
+            *model_blocks,
+        )
         return (
             f"{header}\n"
             "from __future__ import annotations\n\n"
@@ -1547,7 +1720,7 @@ class MethodGenerator:
         self,
         name: str,
         schema: JSONSchema,
-    ) -> tuple[str, set[ImportSpec], bool]:
+    ) -> tuple[str, set[ImportSpec], set[RenderedConstraint], bool]:
         resolved = self.resolver.resolve_schema(schema)
         if resolved.all_of:
             resolved = self.schemas.merge_all_of(resolved)
@@ -1558,6 +1731,7 @@ class MethodGenerator:
         if is_object_model and resolved.properties:
             lines = [f"class {name}(_GeneratedModel):"]
             imports: set[ImportSpec] = set()
+            constraint_definitions: set[RenderedConstraint] = set()
 
             if resolved.description:
                 lines.append(f'    """{escape_docstring(resolved.description)}"""')
@@ -1565,21 +1739,23 @@ class MethodGenerator:
 
             required = set(resolved.required)
             for field_name, field_schema in sorted(resolved.properties.items()):
-                field_line, field_imports = self._render_field(
+                field_line, field_imports, field_constraints = self._render_field(
                     field_name,
                     field_schema,
                     required=field_name in required,
                     import_model_refs=False,
                 )
                 imports.update(field_imports)
+                constraint_definitions.update(field_constraints)
                 lines.append(f"    {field_line}")
 
-            return "\n".join(lines), imports, True
+            return "\n".join(lines), imports, constraint_definitions, True
 
         rendered = self.schemas.render_type(resolved)
         return (
             f"type {name} = {rendered.expression}",
             set(rendered.imports),
+            set(rendered.constraints),
             False,
         )
 
@@ -1590,6 +1766,7 @@ class MethodGenerator:
 
         result_type = self.schemas.render_type(operation.result_schema)
         imports.update(result_type.imports)
+        constraint_definitions = set(result_type.constraints)
         imports.update(
             ImportSpec(f".{self.service_package}._models", name) for name in result_type.model_refs
         )
@@ -1598,12 +1775,13 @@ class MethodGenerator:
         if operation.request_schema is not None:
             required = set(operation.request_schema.required)
             for field_name, field_schema in sorted(operation.request_schema.properties.items()):
-                field_line, field_imports = self._render_field(
+                field_line, field_imports, field_constraints = self._render_field(
                     field_name,
                     field_schema,
                     required=field_name in required,
                 )
                 imports.update(field_imports)
+                constraint_definitions.update(field_constraints)
                 fields.append(f"    {field_line}")
 
         model_imports = {
@@ -1623,8 +1801,9 @@ class MethodGenerator:
             render_imports(normalized_imports),
         ]
 
-        if ImportSpec("pydantic", "BeforeValidator") in normalized_imports:
-            lines.extend(("", "", EXPLICIT_NULL_REJECTOR_SOURCE))
+        rendered_constraints = render_constraint_definitions(constraint_definitions)
+        if rendered_constraints:
+            lines.extend(("", "\n\n\n".join(rendered_constraints)))
 
         lines.extend(
             (
@@ -1652,54 +1831,109 @@ class MethodGenerator:
         *,
         required: bool,
         import_model_refs: bool = True,
-    ) -> tuple[str, set[ImportSpec]]:
-        rendered = self.schemas.render_type(schema)
+    ) -> tuple[str, set[ImportSpec], set[RenderedConstraint]]:
+        rendered = self.schemas.render_type(schema, include_constraints=False)
         imports = set(rendered.imports)
+        constraint_definitions = set(rendered.constraints)
         if import_model_refs:
             imports.update(ImportSpec("._models", ref) for ref in rendered.model_refs)
 
         constraints = self.schemas.field_constraints(schema)
         default_present = "default" in schema.model_fields_set
+        nullable = "None" in rendered.expression.split(" | ")
 
         if required:
             if constraints:
                 imports.add(ImportSpec("pydantic", "Field"))
-                return render_field_assignment(name, rendered.expression, constraints), imports
-            return f"{name}: {rendered.expression}", imports
+                return (
+                    render_field_assignment(name, rendered.expression, constraints),
+                    imports,
+                    constraint_definitions,
+                )
+            return f"{name}: {rendered.expression}", imports, constraint_definitions
 
         if default_present:
             default = schema.default
-            if constraints:
-                imports.add(ImportSpec("pydantic", "Field"))
-                kwargs = {"default": default, **constraints}
-                return render_field_assignment(name, rendered.expression, kwargs), imports
-            return f"{name}: {rendered.expression} = {python_literal(default)}", imports
+            if default is not None or nullable:
+                if default is None:
+                    if constraints:
+                        imports.add(ImportSpec("pydantic", "Field"))
+                        kwargs = {"default": None, **constraints}
+                        return (
+                            render_field_assignment(
+                                name,
+                                rendered.expression,
+                                kwargs,
+                            ),
+                            imports,
+                            constraint_definitions,
+                        )
+                    return (
+                        f"{name}: {rendered.expression} = None",
+                        imports,
+                        constraint_definitions,
+                    )
 
-        if "None" in rendered.expression.split(" | "):
+                imports.add(ImportSpec("pydantic", "Field"))
+                imports.add(ImportSpec("pydantic", "TypeAdapter"))
+                encoded_default = json.dumps(
+                    default,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                encoded_default_expression = f'bytes.fromhex("{encoded_default.hex()}")'
+                if len(encoded_default_expression) + 13 > 100:
+                    encoded_default_expression = (
+                        f'bytes.fromhex(\n                "{encoded_default.hex()}"\n            )'
+                    )
+                return (
+                    render_field_assignment(
+                        name,
+                        rendered.expression,
+                        constraints,
+                        default_factory_expression=(
+                            f"lambda: TypeAdapter({rendered.expression}).validate_json(\n"
+                            f"            {encoded_default_expression},\n"
+                            "            strict=True,\n"
+                            "        )"
+                        ),
+                    ),
+                    imports,
+                    constraint_definitions,
+                )
+
+        if nullable:
             if constraints:
                 imports.add(ImportSpec("pydantic", "Field"))
                 kwargs = {"default": None, **constraints}
-                return render_field_assignment(name, rendered.expression, kwargs), imports
-            return f"{name}: {rendered.expression} = None", imports
+                return (
+                    render_field_assignment(name, rendered.expression, kwargs),
+                    imports,
+                    constraint_definitions,
+                )
+            return (
+                f"{name}: {rendered.expression} = None",
+                imports,
+                constraint_definitions,
+            )
 
-        # The default represents omission and skips validation. Explicit null still
-        # reaches the Pydantic validator and is rejected.
-        imports.update(
-            {
-                ImportSpec("pydantic", "BeforeValidator"),
-                ImportSpec("pydantic", "Field"),
-                ImportSpec("typing", "Annotated"),
-            }
-        )
+        imports.add(ImportSpec("pydantic", "Field"))
+        imports.add(ImportSpec("typing", "cast"))
         kwargs = {
-            "default": None,
             "validate_default": False,
             **constraints,
         }
-        field_type = (
-            f"Annotated[{rendered.expression} | None, BeforeValidator(_reject_explicit_null)]"
+        return (
+            render_field_assignment(
+                name,
+                rendered.expression,
+                kwargs,
+                default_expression=f"cast({python_literal(rendered.expression)}, None)",
+            ),
+            imports,
+            constraint_definitions,
         )
-        return render_field_assignment(name, field_type, kwargs), imports
 
     def _render_facade(
         self,
@@ -1808,8 +2042,27 @@ async def run(settings: GenerationSettings) -> str:
     generator = MethodGenerator(document, source_sha256)
     generated = generator.generate()
 
-    manifest_path = MANIFEST_DIRECTORY / f"{generator.service_package}.json"
+    try:
+        manifest_path = await generation_manifest_path(
+            settings.output,
+            generator.service_package,
+        )
+    except (OSError, RuntimeError, UnicodeError) as error:
+        raise GenerationError(f"failed to resolve generation output: {error}") from error
     previous = await read_manifest(manifest_path)
+    legacy_manifest_path = MANIFEST_DIRECTORY / f"{generator.service_package}.json"
+    migrating_legacy_manifest = False
+    if previous is None:
+        legacy = await read_manifest(legacy_manifest_path)
+        if legacy is not None and not settings.force:
+            raise GenerationError(
+                f"legacy generation manifest {legacy_manifest_path} is not bound to an "
+                "output root; review the requested output and use --force once to establish "
+                "isolated manifest state"
+            )
+        if legacy is not None:
+            previous = legacy
+            migrating_legacy_manifest = True
     if previous is not None and (
         previous.service_id != generator.service_id
         or previous.output_package != generator.service_package
@@ -1863,6 +2116,8 @@ async def run(settings: GenerationSettings) -> str:
             previous_manifest=previous,
             force=settings.force,
         )
+        if migrating_legacy_manifest:
+            await aiofiles.os.unlink(legacy_manifest_path)
     except (OSError, UnicodeError) as error:
         raise GenerationError(f"failed to write generated state: {error}") from error
 
@@ -1870,6 +2125,24 @@ async def run(settings: GenerationSettings) -> str:
         f"Generated {len(generated)} files for {generator.service_id} "
         f"from OpenAPI {document.info.version.root}"
     )
+
+
+async def generation_manifest_path(
+    output_root: Path,
+    service_package: PythonPackageName,
+) -> Path:
+    canonical_output = await asyncio.to_thread(
+        output_root.expanduser().resolve,
+        strict=False,
+    )
+    try:
+        repository_relative_output = canonical_output.relative_to(REPOSITORY_ROOT)
+    except ValueError:
+        output_identity = f"external:{canonical_output.as_posix()}"
+    else:
+        output_identity = f"repository:{repository_relative_output.as_posix()}"
+    output_sha256 = hashlib.sha256(output_identity.encode("utf-8")).hexdigest()
+    return MANIFEST_DIRECTORY / output_sha256 / f"{service_package}.json"
 
 
 def enforce_version_policy(
@@ -2089,6 +2362,18 @@ def render_imports(imports: Iterable[ImportSpec]) -> str:
     return "\n\n".join(sections)
 
 
+def render_constraint_definitions(
+    constraints: Iterable[RenderedConstraint],
+) -> list[str]:
+    definitions: dict[str, str] = {}
+    for constraint in sorted(set(constraints)):
+        existing = definitions.get(constraint.name)
+        if existing is not None and existing != constraint.source:
+            raise GenerationError(f"generated constraint alias collision: {constraint.name}")
+        definitions[constraint.name] = constraint.source
+    return [definitions[name] for name in sorted(definitions)]
+
+
 def import_group(module: str) -> int:
     if module in {"datetime", "typing", "uuid"}:
         return 0
@@ -2146,11 +2431,19 @@ def render_field_assignment(
     name: str,
     annotation: str,
     keyword_arguments: dict[str, JSONValue],
+    *,
+    default_expression: str | None = None,
+    default_factory_expression: str | None = None,
 ) -> str:
-    rendered_arguments = [
+    rendered_arguments = []
+    if default_expression is not None:
+        rendered_arguments.append(f"default={default_expression}")
+    if default_factory_expression is not None:
+        rendered_arguments.append(f"default_factory={default_factory_expression}")
+    rendered_arguments.extend(
         f"{argument_name}={python_literal(value)}"
         for argument_name, value in keyword_arguments.items()
-    ]
+    )
     single_line = f"{name}: {annotation} = Field({', '.join(rendered_arguments)})"
     if len(single_line) + 4 <= 100:
         return single_line

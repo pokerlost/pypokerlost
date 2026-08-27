@@ -12,5 +12,6 @@ class ResponseModel(BaseModel):
         extra="forbid",
         frozen=True,
         hide_input_in_errors=True,
+        strict=True,
         validate_default=True,
     )

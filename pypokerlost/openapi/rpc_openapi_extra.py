@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict
 
 from pypokerlost.types import (
     JSONValue,
@@ -10,7 +10,9 @@ from pypokerlost.types import (
 )
 
 
-class _RPCOpenAPIExtraInput(BaseModel):
+class RPCOpenAPIExtra(BaseModel):
+    """Generic OAuth2/OpenAPI metadata for one RPC operation."""
+
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
@@ -21,30 +23,6 @@ class _RPCOpenAPIExtraInput(BaseModel):
     security_scheme: OpenAPISecurityScheme
     scopes: OAuth2Scopes = ()
     contract_version: OpenAPIContractVersion = 1
-
-
-_RPC_OPENAPI_EXTRA_ADAPTER = TypeAdapter(_RPCOpenAPIExtraInput)
-
-
-@dataclass(frozen=True, slots=True)
-class RPCOpenAPIExtra:
-    """Generic OAuth2/OpenAPI metadata for one RPC operation."""
-
-    security_scheme: OpenAPISecurityScheme
-    scopes: OAuth2Scopes = ()
-    contract_version: OpenAPIContractVersion = 1
-
-    def __post_init__(self) -> None:
-        try:
-            _RPC_OPENAPI_EXTRA_ADAPTER.validate_python(
-                {
-                    "security_scheme": self.security_scheme,
-                    "scopes": self.scopes,
-                    "contract_version": self.contract_version,
-                },
-            )
-        except ValidationError as error:
-            raise ValueError("RPC OpenAPI metadata is invalid") from error
 
     def as_dict(self) -> dict[str, JSONValue]:
         return {

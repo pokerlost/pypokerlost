@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .api_base import APIBase
 from .json import JSONDumps, JSONLoads, JSONScalar, JSONValue
 from .openapi import (

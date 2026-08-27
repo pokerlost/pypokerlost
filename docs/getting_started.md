@@ -117,7 +117,9 @@ application = Application(Client(), lifecycle=lifecycle)
 ```
 
 Setup failures, entrypoint exceptions, and cancellation still unwind resources that were entered
-successfully.
+successfully. If the user lifecycle deliberately suppresses an exception around `yield`,
+`Application` reports that suppression to the surrounding `async with` exactly like a normal async
+context manager; `run_async()` then returns `None` because the entrypoint produced no result.
 
 ## Graceful shutdown
 

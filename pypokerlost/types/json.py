@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, FiniteFloat
 
 type JSONDumps = Callable[..., str]
 type JSONLoads = Callable[..., Any]
 
-type JSONScalar = bool | int | float | str | None
+type JSONScalar = bool | int | FiniteFloat | str | None
 
 
 def _ensure_exact_json_value(value: Any) -> Any:

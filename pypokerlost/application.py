@@ -55,10 +55,10 @@ class Application:
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
-    ) -> None:
+    ) -> bool | None:
         context_stack = self._context_stack
         if context_stack is None:
-            return
+            return None
         try:
             try:
                 async with context_stack:
@@ -67,6 +67,8 @@ class Application:
             except BaseException as propagated_error:
                 if propagated_error is not exc_value:
                     raise
+                return None
+            return exc_value is not None
         finally:
             self._context_stack = None
             self._is_running = False
@@ -74,9 +76,10 @@ class Application:
     async def run_async[ResultT](
         self,
         entrypoint: Callable[[Client], Awaitable[ResultT]],
-    ) -> ResultT:
+    ) -> ResultT | None:
         async with self as client:
             return await entrypoint(client)
+        return None
 
     def run[ResultT](
         self,
@@ -89,7 +92,9 @@ class Application:
         entrypoint: Callable[[Client], Awaitable[ResultT]],
     ) -> ResultT | None:
         async with SignalController() as signals:
-            entrypoint_task: asyncio.Task[ResultT] = asyncio.create_task(self.run_async(entrypoint))
+            entrypoint_task: asyncio.Task[ResultT | None] = asyncio.create_task(
+                self.run_async(entrypoint),
+            )
             signal_task: asyncio.Task[signal.Signals] = asyncio.create_task(signals.wait())
 
             try:

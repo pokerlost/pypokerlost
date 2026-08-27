@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .base_session import DEFAULT_TIMEOUT, BaseSession
 from .httpx_session import HttpxSession
 
