@@ -1,3 +1,3 @@
-from .rpc_openapi_extra import RpcOpenApiExtra
+from .rpc_openapi_extra import RPCOpenAPIExtra
 
-__all__ = ("RpcOpenApiExtra",)
+__all__ = ("RPCOpenAPIExtra",)

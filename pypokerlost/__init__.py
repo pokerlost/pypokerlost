@@ -14,6 +14,7 @@ from pypokerlost.exceptions import (
     ClientTimeoutError,
     PokerlostAPIError,
     PokerlostError,
+    PokerlostProtocolError,
 )
 from pypokerlost.methods import PokerlostMethod
 
@@ -36,6 +37,7 @@ __all__ = (
     "PokerlostAPIError",
     "PokerlostError",
     "PokerlostMethod",
+    "PokerlostProtocolError",
     "ResponseModel",
     "__version__",
 )

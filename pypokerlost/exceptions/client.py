@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pypokerlost.enums import ServiceName
 from pypokerlost.exceptions.base import PokerlostError
 
 if TYPE_CHECKING:
@@ -34,7 +33,6 @@ class ClientDecodeError(ClientError):
     """Raised when a response violates the declared wire or result contract."""
 
     method: PokerlostMethod[Any]
-    service: ServiceName
     operation: str
     status_code: int
 
@@ -42,17 +40,14 @@ class ClientDecodeError(ClientError):
         self,
         *,
         method: PokerlostMethod[Any],
-        service: ServiceName,
         operation: str,
         status_code: int,
     ) -> None:
         self.method = method
-        self.service = service
         self.operation = operation
         self.status_code = status_code
         super().__init__(
-            f"Response decoding failed; service={service.value!r}; "
-            f"operation={operation!r}; status_code={status_code}"
+            f"Response decoding failed; operation={operation!r}; status_code={status_code}"
         )
 
 
@@ -60,37 +55,31 @@ class ClientConnectionError(ClientError):
     """Raised when the HTTP transport cannot complete a request."""
 
     method: PokerlostMethod[Any]
-    service: ServiceName
     operation: str
 
     def __init__(
         self,
         *,
         method: PokerlostMethod[Any],
-        service: ServiceName,
         operation: str,
     ) -> None:
         self.method = method
-        self.service = service
         self.operation = operation
-        super().__init__(f"Connection failed; service={service.value!r}; operation={operation!r}")
+        super().__init__(f"Connection failed; operation={operation!r}")
 
 
 class ClientTimeoutError(ClientError):
     """Raised when an HTTP request exceeds its configured timeout."""
 
     method: PokerlostMethod[Any]
-    service: ServiceName
     operation: str
 
     def __init__(
         self,
         *,
         method: PokerlostMethod[Any],
-        service: ServiceName,
         operation: str,
     ) -> None:
         self.method = method
-        self.service = service
         self.operation = operation
-        super().__init__(f"Request timed out; service={service.value!r}; operation={operation!r}")
+        super().__init__(f"Request timed out; operation={operation!r}")

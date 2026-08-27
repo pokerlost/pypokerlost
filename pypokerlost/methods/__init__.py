@@ -1,5 +1,3 @@
-from .accounts import AccountsMethod
-from .auth import AuthMethod
 from .base import PokerlostMethod
 
-__all__ = ("AccountsMethod", "AuthMethod", "PokerlostMethod")
+__all__ = ("PokerlostMethod",)

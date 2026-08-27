@@ -15,7 +15,8 @@ class ApplicationLifecycle(Protocol):
         self,
         application: Application,
         /,
-    ) -> AbstractAsyncContextManager[None]: ...
+    ) -> AbstractAsyncContextManager[None]:
+        """Create the user lifecycle context for ``application``."""
 
 
 @asynccontextmanager

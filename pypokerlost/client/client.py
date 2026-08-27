@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from types import TracebackType
 from typing import Self
@@ -8,54 +9,98 @@ from pypokerlost.client.current_client import use_current_client
 from pypokerlost.client.session import BaseSession, HttpxSession
 from pypokerlost.exceptions import ClientStateError
 from pypokerlost.methods import PokerlostMethod
+from pypokerlost.middleware import BaseMiddleware, MiddlewareHandler
+from pypokerlost.storage import BaseStorage, MemoryStorage
 
 
 class Client:
-    """Thin facade over one pluggable asynchronous session."""
+    """Own one pluggable asynchronous session and storage resource."""
 
-    def __init__(self, session: BaseSession | None = None) -> None:
-        self.session = session if session is not None else HttpxSession()
+    def __init__(
+        self,
+        session: BaseSession | None = None,
+        storage: BaseStorage | None = None,
+        middleware: Sequence[BaseMiddleware] | None = None,
+    ) -> None:
+        self.session: BaseSession = session if session is not None else HttpxSession()
+        self.storage: BaseStorage = storage if storage is not None else MemoryStorage()
+        self._middleware: list[BaseMiddleware] = list(middleware) if middleware is not None else []
         self._context_stack: AsyncExitStack | None = None
 
+    @property
+    def middleware(self) -> tuple[BaseMiddleware, ...]:
+        """Return an immutable snapshot of configured middleware."""
+        return tuple(self._middleware)
+
+    def add_middleware(self, middleware: BaseMiddleware) -> Self:
+        """Append one middleware component for subsequent requests."""
+        self._middleware.append(middleware)
+        return self
+
     async def start(self) -> Self:
-        await self.session.start()
+        await self.storage.start()
+        async with AsyncExitStack() as rollback_stack:
+            rollback_stack.push_async_callback(self.storage.close)
+            await self.session.start()
+            rollback_stack.pop_all()
         return self
 
     async def stop(self) -> None:
-        await self.session.close()
+        async with AsyncExitStack() as cleanup_stack:
+            cleanup_stack.push_async_callback(self.storage.close)
+            cleanup_stack.push_async_callback(self.session.close)
 
     async def __call__[ResultT](
         self,
         method: PokerlostMethod[ResultT],
         request_timeout: int | None = None,
     ) -> ResultT:
-        executing_method = method.model_copy().as_(self)
-        return await self.session(executing_method, timeout=request_timeout)
+        return await self.make_request(method, request_timeout=request_timeout)
 
     async def make_request[ResultT](
         self,
         method: PokerlostMethod[ResultT],
         request_timeout: int | None = None,
     ) -> ResultT:
-        return await self(method, request_timeout=request_timeout)
+        executing_method = method.model_copy().as_(self)
+        middleware = tuple(self._middleware)
+        if not middleware:
+            return await self.session(executing_method, timeout=request_timeout)
+
+        async def session_handler(
+            next_method: PokerlostMethod[ResultT],
+        ) -> ResultT:
+            return await self.session(next_method, timeout=request_timeout)
+
+        handler: MiddlewareHandler[ResultT] = session_handler
+        for component in reversed(middleware):
+            handler = self._wrap_middleware(component, handler)
+        return await handler(executing_method)
+
+    def _wrap_middleware[ResultT](
+        self,
+        middleware: BaseMiddleware,
+        handler: MiddlewareHandler[ResultT],
+    ) -> MiddlewareHandler[ResultT]:
+        async def wrapped_handler(method: PokerlostMethod[ResultT]) -> ResultT:
+            return await middleware(handler, method, self)
+
+        return wrapped_handler
 
     async def __aenter__(self) -> Self:
         if self._context_stack is not None:
             raise ClientStateError
 
-        context_stack = AsyncExitStack()
-        self._context_stack = context_stack
-        await context_stack.__aenter__()
-        context_stack.push_async_callback(self.stop)
-
+        entry_stack = AsyncExitStack()
+        self._context_stack = entry_stack
         try:
-            await self.start()
-            context_stack.enter_context(use_current_client(self))
+            async with entry_stack:
+                await entry_stack.enter_async_context(self.storage)
+                await entry_stack.enter_async_context(self.session)
+                entry_stack.enter_context(use_current_client(self))
+                self._context_stack = entry_stack.pop_all()
         except BaseException:
-            try:
-                await context_stack.aclose()
-            finally:
-                self._context_stack = None
+            self._context_stack = None
             raise
         return self
 
@@ -69,6 +114,12 @@ class Client:
         if context_stack is None:
             return
         try:
-            await context_stack.__aexit__(exc_type, exc_value, traceback)
+            try:
+                async with context_stack:
+                    if exc_value is not None:
+                        raise exc_value.with_traceback(traceback)
+            except BaseException as propagated_error:
+                if propagated_error is not exc_value:
+                    raise
         finally:
             self._context_stack = None

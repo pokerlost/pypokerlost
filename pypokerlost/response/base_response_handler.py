@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import abc
 from typing import TYPE_CHECKING
-
-from pypokerlost.enums import ServiceName
 
 if TYPE_CHECKING:
     from pypokerlost.methods import PokerlostMethod
 
 
-class BaseResponseHandler(ABC):
+class BaseResponseHandler(abc.ABC):
     """Interpret one application response without transport dependencies."""
 
-    @abstractmethod
+    @abc.abstractmethod
     def handle[ResultT](
         self,
         *,
         method: PokerlostMethod[ResultT],
-        service: ServiceName,
         operation: str,
         status_code: int,
         content: str,

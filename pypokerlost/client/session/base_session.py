@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import abc
 from types import TracebackType
 from typing import Self
 
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.request import RpcRequestBuilder
+from pypokerlost.request import RPCRequestBuilder
 from pypokerlost.response import BaseResponseHandler
 
 DEFAULT_TIMEOUT = 10
 
 
-class BaseSession(ABC):
+class BaseSession(abc.ABC):
     """Orchestrate request building, execution, and response handling."""
 
     def __init__(
         self,
         *,
-        request_builder: RpcRequestBuilder,
+        request_builder: RPCRequestBuilder,
         response_handler: BaseResponseHandler,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> None:
@@ -26,7 +26,7 @@ class BaseSession(ABC):
         self._timeout = timeout
 
     @property
-    def request_builder(self) -> RpcRequestBuilder:
+    def request_builder(self) -> RPCRequestBuilder:
         return self._request_builder
 
     @property
@@ -37,8 +37,8 @@ class BaseSession(ABC):
     def timeout(self) -> int:
         return self._timeout
 
-    async def start(self) -> None:
-        return None
+    async def start(self) -> None:  # noqa: B027
+        """Start session resources; the default implementation has none."""
 
     async def __call__[ResultT](
         self,
@@ -48,7 +48,7 @@ class BaseSession(ABC):
         effective_timeout = self.timeout if timeout is None else timeout
         return await self.make_request(method, timeout=effective_timeout)
 
-    @abstractmethod
+    @abc.abstractmethod
     async def make_request[ResultT](
         self,
         method: PokerlostMethod[ResultT],
@@ -56,7 +56,7 @@ class BaseSession(ABC):
     ) -> ResultT:
         """Send one method and return its declared result."""
 
-    @abstractmethod
+    @abc.abstractmethod
     async def close(self) -> None:
         """Close resources held by the session."""
 

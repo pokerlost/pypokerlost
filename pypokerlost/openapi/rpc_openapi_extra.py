@@ -1,22 +1,55 @@
 from dataclasses import dataclass
 
-from pypokerlost.enums import AccessRole, ServiceName
-from pypokerlost.types import JsonValue
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+
+from pypokerlost.types import (
+    JSONValue,
+    OAuth2Scopes,
+    OpenAPIContractVersion,
+    OpenAPISecurityScheme,
+)
+
+
+class _RPCOpenAPIExtraInput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        strict=True,
+        validate_default=True,
+    )
+
+    security_scheme: OpenAPISecurityScheme
+    scopes: OAuth2Scopes = ()
+    contract_version: OpenAPIContractVersion = 1
+
+
+_RPC_OPENAPI_EXTRA_ADAPTER = TypeAdapter(_RPCOpenAPIExtraInput)
 
 
 @dataclass(frozen=True, slots=True)
-class RpcOpenApiExtra:
-    """JSON-compatible service and access metadata for one RPC operation."""
+class RPCOpenAPIExtra:
+    """Generic OAuth2/OpenAPI metadata for one RPC operation."""
 
-    service: ServiceName
-    access: tuple[AccessRole, ...]
-    contract_version: int = 1
+    security_scheme: OpenAPISecurityScheme
+    scopes: OAuth2Scopes = ()
+    contract_version: OpenAPIContractVersion = 1
 
-    def as_dict(self) -> dict[str, JsonValue]:
+    def __post_init__(self) -> None:
+        try:
+            _RPC_OPENAPI_EXTRA_ADAPTER.validate_python(
+                {
+                    "security_scheme": self.security_scheme,
+                    "scopes": self.scopes,
+                    "contract_version": self.contract_version,
+                },
+            )
+        except ValidationError as error:
+            raise ValueError("RPC OpenAPI metadata is invalid") from error
+
+    def as_dict(self) -> dict[str, JSONValue]:
         return {
+            "security": [{self.security_scheme: list(self.scopes)}],
             "x-pokerlost": {
                 "contract_version": self.contract_version,
-                "service": self.service.value,
-                "access": [role.value for role in self.access],
             },
         }

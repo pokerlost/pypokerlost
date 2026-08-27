@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from abc import ABC
+import abc
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import ConfigDict
 
 from pypokerlost.client.context_controller import ClientContextController
-from pypokerlost.enums import ServiceName
+from pypokerlost.types import HTTPMethod, RPCOperation
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
 
 
-class PokerlostMethod[ResultT](ClientContextController, ABC):
+class PokerlostMethod[ResultT](ClientContextController, abc.ABC):
     """Typed request fields, RPC metadata, and optional explicit client binding."""
 
     model_config = ConfigDict(
@@ -23,9 +23,8 @@ class PokerlostMethod[ResultT](ClientContextController, ABC):
         arbitrary_types_allowed=True,
     )
 
-    __service__: ClassVar[ServiceName]
-    __api_method__: ClassVar[str]
-    __http_method__: ClassVar[str] = "POST"
+    __api_method__: ClassVar[RPCOperation]
+    __http_method__: ClassVar[HTTPMethod] = "POST"
     __returning__: ClassVar[Any]
 
     async def emit(self, client: Client) -> ResultT:

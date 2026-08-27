@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+from contextlib import AsyncExitStack
 
 import httpx
 
 from pypokerlost.environment import PRODUCTION, APIServer
 from pypokerlost.exceptions import ClientConnectionError, ClientTimeoutError
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.request import RpcRequestBuilder
+from pypokerlost.request import RPCRequestBuilder
 from pypokerlost.response import ApplicationResponseHandler
 from pypokerlost.types import JSONDumps, JSONLoads
 
@@ -25,7 +26,7 @@ class HttpxSession(BaseSession):
         json_loads: JSONLoads = json.loads,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> None:
-        request_builder = RpcRequestBuilder(
+        request_builder = RPCRequestBuilder(
             api_server=api_server,
             json_dumps=json_dumps,
         )
@@ -36,10 +37,15 @@ class HttpxSession(BaseSession):
             timeout=timeout,
         )
         self._http_client: httpx.AsyncClient | None = None
+        self._context_stack: AsyncExitStack | None = None
 
     async def start(self) -> None:
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient()
+            async with AsyncExitStack() as entry_stack:
+                self._http_client = await entry_stack.enter_async_context(
+                    httpx.AsyncClient(),
+                )
+                self._context_stack = entry_stack.pop_all()
 
     async def make_request[ResultT](
         self,
@@ -66,26 +72,27 @@ class HttpxSession(BaseSession):
         except httpx.TimeoutException as error:
             raise ClientTimeoutError(
                 method=method,
-                service=request.service,
                 operation=request.operation,
             ) from error
         except httpx.TransportError as error:
             raise ClientConnectionError(
                 method=method,
-                service=request.service,
                 operation=request.operation,
             ) from error
 
         return self.response_handler.handle(
             method=method,
-            service=request.service,
             operation=request.operation,
             status_code=response.status_code,
             content=response.text,
         )
 
     async def close(self) -> None:
-        http_client = self._http_client
-        self._http_client = None
-        if http_client is not None:
-            await http_client.aclose()
+        context_stack = self._context_stack
+        self._context_stack = None
+        if context_stack is None:
+            self._http_client = None
+            return
+
+        async with context_stack:
+            self._http_client = None

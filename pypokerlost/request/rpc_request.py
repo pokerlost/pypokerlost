@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pypokerlost.enums import ServiceName
+from pypokerlost.types import HTTPMethod, RPCOperation
 
 
 @dataclass(frozen=True, slots=True)
-class RpcRequest:
+class RPCRequest:
     """Immutable transport-ready request for one RPC operation."""
 
-    service: ServiceName
-    operation: str
-    http_method: str
+    operation: RPCOperation
+    http_method: HTTPMethod
     url: str
     content: bytes

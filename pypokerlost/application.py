@@ -38,19 +38,15 @@ class Application:
         if self._is_running:
             raise ApplicationStateError
         self._is_running = True
-        context_stack = AsyncExitStack()
-        self._context_stack = context_stack
-        await context_stack.__aenter__()
 
         try:
-            client = await context_stack.enter_async_context(self._client)
-            await context_stack.enter_async_context(self._lifecycle(self))
+            async with AsyncExitStack() as entry_stack:
+                client = await entry_stack.enter_async_context(self._client)
+                await entry_stack.enter_async_context(self._lifecycle(self))
+                self._context_stack = entry_stack.pop_all()
         except BaseException:
-            try:
-                await context_stack.aclose()
-            finally:
-                self._context_stack = None
-                self._is_running = False
+            self._context_stack = None
+            self._is_running = False
             raise
         return client
 
@@ -64,7 +60,13 @@ class Application:
         if context_stack is None:
             return
         try:
-            await context_stack.__aexit__(exc_type, exc_value, traceback)
+            try:
+                async with context_stack:
+                    if exc_value is not None:
+                        raise exc_value.with_traceback(traceback)
+            except BaseException as propagated_error:
+                if propagated_error is not exc_value:
+                    raise
         finally:
             self._context_stack = None
             self._is_running = False
