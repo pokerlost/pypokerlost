@@ -7,19 +7,19 @@ This document describes internal ownership and runtime flow. Public startup and 
 
 ## Boundaries
 
-| Component | Responsibility |
-| --- | --- |
-| `Application` | Own one client lifecycle, one user lifecycle, and signal-aware synchronous execution. |
-| `Client` | Own one session, one storage, and a mutable ordered middleware list; copy and bind explicitly executed methods; snapshot middleware per request; and manage current-client scope. |
-| `BaseMiddleware` | Define the single RPC wrapper contract used by client-built request chains. |
-| `RPCRequestOptions` | Carry immutable, copy-owned headers through one middleware-chain execution. |
-| `PokerlostMethod` | Hold finite strict request fields and require operation and result metadata. |
-| `RPCRequestBuilder` | Serialize a method once and build an immutable transport request. |
-| `BaseSession` | Resolve timeout and define pluggable asynchronous execution. |
-| `HttpxSession` | Own restartable HTTPX resources and concrete HTTP I/O. |
-| `BaseResponseHandler` | Define response-protocol interpretation. |
-| `ApplicationResponseHandler` | Decode the fixed envelope and validate the declared result. |
-| `RPCOpenAPIExtra` | Produce generic service-side OAuth2 security metadata. |
+| Component                    | Responsibility                                                                                                                                                                    |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Application`                | Own one client lifecycle, one user lifecycle, and signal-aware synchronous execution.                                                                                             |
+| `Client`                     | Own one session, one storage, and a mutable ordered middleware list; copy and bind explicitly executed methods; snapshot middleware per request; and manage current-client scope. |
+| `BaseMiddleware`             | Define the single RPC wrapper contract used by client-built request chains.                                                                                                       |
+| `RPCRequestOptions`          | Carry immutable, copy-owned headers through one middleware-chain execution.                                                                                                       |
+| `PokerlostMethod`            | Hold finite strict request fields and require operation and result metadata.                                                                                                      |
+| `RPCRequestBuilder`          | Serialize a method once and build an immutable transport request.                                                                                                                 |
+| `BaseSession`                | Resolve timeout and define pluggable asynchronous execution.                                                                                                                      |
+| `HttpxSession`               | Own restartable HTTPX resources and concrete HTTP I/O.                                                                                                                            |
+| `BaseResponseHandler`        | Define response-protocol interpretation.                                                                                                                                          |
+| `ApplicationResponseHandler` | Decode the fixed envelope and validate the declared result.                                                                                                                       |
+| `RPCOpenAPIExtra`            | Produce generic service-side OAuth2 security metadata.                                                                                                                            |
 
 Lower request, response, and session layers do not import `Client`. Typed `RPCRequestOptions` is the
 only per-request transport extension; there is no service identity, routing layer, auth state,

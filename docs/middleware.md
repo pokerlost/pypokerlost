@@ -82,11 +82,11 @@ logger = logging.getLogger(__name__)
 
 class TimingMiddleware(BaseMiddleware):
     async def __call__[ResultT](
-        self,
-        handler: MiddlewareHandler,
-        method: PokerlostMethod[ResultT],
-        client: Client,
-        options: RPCRequestOptions,
+            self,
+            handler: MiddlewareHandler,
+            method: PokerlostMethod[ResultT],
+            client: Client,
+            options: RPCRequestOptions,
     ) -> ResultT:
         started_at = monotonic()
         try:
@@ -127,11 +127,11 @@ non-sensitive operation name before continuing:
 ```python
 class LastOperationMiddleware(BaseMiddleware):
     async def __call__[ResultT](
-        self,
-        handler: MiddlewareHandler,
-        method: PokerlostMethod[ResultT],
-        client: Client,
-        options: RPCRequestOptions,
+            self,
+            handler: MiddlewareHandler,
+            method: PokerlostMethod[ResultT],
+            client: Client,
+            options: RPCRequestOptions,
     ) -> ResultT:
         await client.storage.set(
             "middleware.last_operation",
@@ -151,11 +151,11 @@ service-specific state and add a per-request header without mutating a shared HT
 ```python
 class AuthorizationMiddleware(BaseMiddleware):
     async def __call__[ResultT](
-        self,
-        handler: MiddlewareHandler,
-        method: PokerlostMethod[ResultT],
-        client: Client,
-        options: RPCRequestOptions,
+            self,
+            handler: MiddlewareHandler,
+            method: PokerlostMethod[ResultT],
+            client: Client,
+            options: RPCRequestOptions,
     ) -> ResultT:
         access_token = await access_token_for_service(
             storage=client.storage,
