@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, PrivateAttr
 
+from pypokerlost.client.current_client import get_current_client
+
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
 
@@ -17,9 +19,14 @@ class ClientContextController(BaseModel):
         context_client = __context.get("client") if __context else None
         self._client = context_client
 
-    def as_(self, client: Client) -> Self:
+    def as_(self, client: Client | None) -> Self:
         self._client = client
         return self
+
+    def resolve_client(self) -> Client:
+        if self._client is not None:
+            return self._client
+        return get_current_client()
 
     @property
     def client(self) -> Client | None:

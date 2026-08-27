@@ -42,23 +42,67 @@ from accountsService and authService, not another speculative subsystem.
 
 ## Current lifecycle and execution API
 
-`Application` owns the automatic lifecycle of one `Client`. It supports a synchronous entrypoint
-runner, an asynchronous runner, and direct async scope management:
+`Application` owns the automatic lifecycle of one `Client` and composes it with one user-supplied
+asynchronous context-manager callable named `lifecycle`. It supports a signal-aware synchronous
+entrypoint runner, an asynchronous runner, and direct async scope management:
 
 ```python
 application.run(main)
 result = await application.run_async(main)
 
 async with application as client:
-    result = await method.as_(client)
+    result = await method
 ```
 
-`Application.run()` owns its event loop through `asyncio.run()`. `Application.run_async()` is for an
-already-running loop. Reentrant or concurrent entry of the same application is rejected. Startup
-failure clears the running state; exit always stops the client and clears that state in `finally`.
-Sequential reuse is supported.
+The one public extension contract is used like this:
 
-Every ordinary method supports exactly these execution forms:
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from pypokerlost import Application, Client
+
+
+@asynccontextmanager
+async def lifecycle(application: Application) -> AsyncIterator[None]:
+    await WarmupMethod()
+    try:
+        yield
+    finally:
+        await FlushMethod()
+
+
+application = Application(Client(), lifecycle=lifecycle)
+```
+
+Application entry rejects overlapping use, marks the application running, enters the client, and
+then enters the user lifecycle. Reverse exit leaves the lifecycle first, resets the current client,
+stops the session, and clears the running state. Lifecycle setup, the entrypoint, and lifecycle
+teardown therefore all execute while the application client is current. Setup failure and
+cancellation still unwind every entered context. Sequential reuse is supported.
+
+`Application.run()` owns its event loop through `asyncio.run()` and temporarily handles `SIGINT`
+and `SIGTERM` where `asyncio` loop signal handlers are supported. A handled signal cancels and
+awaits the application task so lifecycle/session cleanup completes, then `run()` returns `None`.
+Unsupported platforms or non-main-thread execution continue normally without signal integration.
+`Application.run_async()` is for a caller-owned running loop and never installs process signal
+handlers. Application code must cooperate with normal asyncio cancellation; the SDK does not force
+termination when user code suppresses cancellation indefinitely.
+
+The handled-shutdown sequence is:
+
+```text
+SIGINT or SIGTERM
+→ set shutdown event
+→ cancel entrypoint/application task
+→ exit user lifecycle
+→ reset current client
+→ close HttpxSession
+→ remove installed signal handlers
+→ Application.run() returns None
+```
+
+Every ordinary method supports these explicit execution forms anywhere:
 
 ```python
 result = await client(method)
@@ -66,20 +110,31 @@ result = await client.make_request(method)
 result = await method.as_(client)
 ```
 
-`Client.__call__()` binds the method to itself before delegating. `PokerlostMethod.__await__()` uses
-only the client explicitly bound to that object; awaiting an unbound method raises
-`ClientContextError`. There is no ambient or fallback current-client lookup.
+Inside an application or client async context, the task-local current client also enables:
+
+```python
+result = await method
+```
+
+Resolution order is explicit `.as_(client)` binding, then the task-local current client, then
+`ClientContextError`. `.as_(None)` clears an explicit binding and restores ambient fallback.
+`Client.__call__()` executes an isolated model copy explicitly bound to itself and does not mutate
+the caller's method.
 
 Manual lifecycle is also available:
 
 ```python
 async with client:
-    result = await client(method)
+    result = await method
 ```
 
-`Client.start()` and `Client.stop()` delegate to the session. The default `HttpxSession` starts
-lazily, closes idempotently, and can create a fresh HTTP client after a later start. Stopping a
-client is therefore not terminal.
+`Client` async-context entry starts the session and then installs that client as current; exit
+resets the exact previous context before stopping the session. Nested client scopes restore the
+outer client, concurrent tasks retain independent clients, and child tasks inherit the context
+present when they are created. A background task must not outlive the application/client scope
+whose session it uses. Reentrant or concurrent async-context entry of the same client is rejected.
+Direct `Client.start()` and `Client.stop()` manage session resources only and never install ambient
+context. The default `HttpxSession` remains lazy, idempotently closable, and restartable.
 
 ## Package and responsibility boundaries
 
@@ -94,6 +149,7 @@ pypokerlost/
 │   ├── __init__.py
 │   ├── client.py
 │   ├── context_controller.py
+│   ├── current_client.py
 │   └── session/
 │       ├── __init__.py
 │       ├── base_session.py
@@ -117,7 +173,17 @@ pypokerlost/
 │   └── client.py
 ├── methods/
 │   ├── __init__.py
-│   └── base.py
+│   ├── base.py
+│   ├── accounts/
+│   │   ├── __init__.py
+│   │   └── base.py
+│   └── auth/
+│       ├── __init__.py
+│       └── base.py
+├── lifecycle/
+│   ├── __init__.py
+│   ├── application_lifecycle.py
+│   └── signal_controller.py
 ├── openapi/
 │   ├── __init__.py
 │   └── rpc_openapi_extra.py
@@ -135,14 +201,32 @@ pypokerlost/
     └── json.py
 ```
 
+The documentation shape is:
+
+```text
+docs/
+├── ARCHITECTURE.md
+└── ADDING_METHODS.md
+```
+
 Responsibilities remain narrow:
 
-- `Application` coordinates one client's automatic lifecycle and prevents overlapping entry.
-- `Client` chooses a default session, binds methods, delegates calls, and delegates lifecycle.
+- `Application` composes one managed client with one user lifecycle, rejects overlapping entry,
+  and owns signal-aware synchronous entrypoint execution.
+- `Client` chooses a default session, safely binds copied methods, delegates calls, and installs
+  task-local current-client context only during async-context use.
+- `current_client.py` owns the one typed task-local current-client variable and exact token-based
+  nested-scope restoration.
 - `ClientContextController` stores one optional explicitly bound `Client` in a Pydantic private
-  attribute and supports future returned SDK models through validation context.
+  attribute, resolves explicit binding before ambient context, and supports future returned SDK
+  models through validation context.
+- `ApplicationLifecycle` defines the single user lifecycle strategy; the default implementation is
+  a no-op async context manager.
+- `SignalController` temporarily registers supported loop signal handlers for one `run()` call.
 - `PokerlostMethod[ResultT]` contains request fields, service/operation/result metadata, and private
   bound-client context.
+- `AccountsMethod[ResultT]` and `AuthMethod[ResultT]` are abstract service-specific method bases
+  that fix only `ServiceName.ACCOUNTS` and `ServiceName.AUTH`, respectively.
 - `RpcRequestBuilder` and `RequestValuePreparer` own request preparation under `request/`.
 - `BaseSession` composes a request builder and response handler and owns only common timeout and
   execution orchestration.
@@ -174,9 +258,21 @@ method.as_(client)
 → the same request pipeline
 ```
 
+The implicit prefix inside an active application/client scope is:
+
+```text
+await method
+→ ClientContextController.resolve_client
+→ task-local current Client
+→ PokerlostMethod.emit
+→ Client.__call__
+→ the same request pipeline
+```
+
 `request/`, `response/`, and `client/session/` do not import `Client` or pass it through their
 internal pipelines. Do not replace that removed dependency with an arbitrary context dictionary,
-service locator, dependency container, middleware chain, or task-local state.
+service locator, dependency container, or middleware chain. Task-local client state exists only in
+`client/current_client.py` and does not enter the lower request/response/session pipeline.
 
 ## Method metadata and enums
 
@@ -190,7 +286,7 @@ All SDK-owned enums live under `pypokerlost/enums/` and are exported through
 choose a host, route a request, or trigger authentication behavior. New services require deliberate
 enum members; there is no free-form fallback.
 
-`PokerlostMethod[ResultT]` is a strict Pydantic v2 request model. A future concrete method declares:
+`PokerlostMethod[ResultT]` is a strict Pydantic v2 request model. Its generic metadata contract is:
 
 ```python
 __service__: ClassVar[ServiceName]
@@ -199,10 +295,26 @@ __http_method__: ClassVar[str] = "POST"
 __returning__: ClassVar[Any]
 ```
 
+The production package also provides the abstract service-specific bases:
+
+```python
+class AccountsMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.ACCOUNTS
+
+
+class AuthMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.AUTH
+```
+
+A future accounts or auth operation inherits its service metadata from the corresponding base and
+declares its operation, result type, request fields, and only a non-default HTTP method when the
+authoritative service contract requires one. `docs/ADDING_METHODS.md` is the mechanical guide for
+that future work. Neither service base declares `__api_method__`, so neither is a concrete endpoint.
+
 Methods contain request fields and declarative metadata only. They do not build requests, decode
 responses, perform I/O, store authentication, refresh credentials, retry, resolve service URLs, or
-generate endpoint wrappers. Do not add task-local or global current-client state, a metaclass,
-dynamic attribute lookup, or runtime generic/MRO/Pydantic-internal introspection.
+generate endpoint wrappers. Do not add another current-client mechanism, a process-global default,
+a metaclass, dynamic attribute lookup, or runtime generic/MRO/Pydantic-internal introspection.
 
 ## Server and request contract
 
@@ -380,5 +492,6 @@ Real accountsService and authService behavior must determine any future:
 - endpoint wrappers, synchronous facade, and WebSocket/update behavior;
 - streaming API and its error-body protocol.
 
-Concrete accountsService and authService operations remain future ordinary `PokerlostMethod`
-subclasses; they are not transport, lifecycle, authentication, or routing policy.
+Concrete accountsService and authService operations remain future ordinary subclasses of
+`AccountsMethod` and `AuthMethod`; they are not transport, lifecycle, authentication, or routing
+policy.

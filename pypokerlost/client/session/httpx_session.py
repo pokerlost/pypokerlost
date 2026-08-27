@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 
 import httpx
@@ -37,12 +36,10 @@ class HttpxSession(BaseSession):
             timeout=timeout,
         )
         self._http_client: httpx.AsyncClient | None = None
-        self._startup_lock = asyncio.Lock()
 
     async def start(self) -> None:
-        async with self._startup_lock:
-            if self._http_client is None:
-                self._http_client = httpx.AsyncClient()
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient()
 
     async def make_request[ResultT](
         self,
@@ -88,8 +85,7 @@ class HttpxSession(BaseSession):
         )
 
     async def close(self) -> None:
-        async with self._startup_lock:
-            http_client = self._http_client
-            self._http_client = None
-            if http_client is not None:
-                await http_client.aclose()
+        http_client = self._http_client
+        self._http_client = None
+        if http_client is not None:
+            await http_client.aclose()

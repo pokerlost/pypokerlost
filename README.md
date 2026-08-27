@@ -11,6 +11,18 @@ redesign.
 Before development, read [`AGENTS.md`](AGENTS.md), [`SERVICE.md`](SERVICE.md), and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+## Installation
+
+Install the distribution with the package manager used by the consuming project:
+
+```bash
+uv add pypokerlost
+# or
+python -m pip install pypokerlost
+```
+
+Python 3.13 or newer is required.
+
 ## Development setup
 
 From the repository root:
@@ -20,7 +32,7 @@ uv sync --locked --all-groups
 ```
 
 The distribution and import package are both named `pypokerlost`; runtime code lives directly in
-`pypokerlost/` without a `src/` directory. Python 3.13 or newer is required.
+`pypokerlost/` without a `src/` directory.
 
 Package version is declared in `pyproject.toml` and exposed from installed distribution metadata:
 
@@ -46,14 +58,20 @@ application = Application(client)
 
 
 async def main(client: Client) -> None:
-    result = await client(method)
+    account = await GetAccountMethod(account_id=account_id)
 
 
 application.run(main)
 ```
 
-`Application.run()` owns an event loop through `asyncio.run()`. In an already-running loop, use
-`run_async()`:
+While the application is active, its client is task-local and methods can be awaited without
+`.as_(client)`. `Application.run()` owns an event loop through `asyncio.run()` and temporarily
+handles `SIGINT` and `SIGTERM` where the running loop supports signal handlers. A handled signal
+cancels the entrypoint, waits for lifecycle and session cleanup, removes the temporary handlers,
+and makes `run()` return `None`.
+
+In an already-running caller-owned loop, use `run_async()`; it never registers process signal
+handlers:
 
 ```python
 result = await application.run_async(main)
@@ -63,10 +81,10 @@ Direct application scope returns the managed client:
 
 ```python
 async with application as client:
-    result = await method.as_(client)
+    result = await method
 ```
 
-Every `PokerlostMethod` supports the same three execution forms:
+Every `PokerlostMethod` also supports the same explicit execution forms:
 
 ```python
 result = await client(method)
@@ -74,24 +92,81 @@ result = await client.make_request(method)
 result = await method.as_(client)
 ```
 
-The client-call forms bind `method` to `client` and delegate through its session. `.as_(client)`
-binds that individual method object and returns it, so awaiting it reaches the same pipeline through
-`PokerlostMethod.__await__()` and `emit()`. Awaiting an unbound method raises
-`ClientContextError`; there is no ambient or task-local current client.
+The client-call forms execute through that exact client and delegate through its session without
+mutating the caller's method. `.as_(client)` explicitly binds an individual method and overrides
+any task-local client. `.as_(None)` clears that explicit binding and restores ambient fallback.
+Resolution is therefore explicit binding, task-local current client, then `ClientContextError`.
+Outside an application/client scope, an implicitly awaited unbound method raises that error.
 
 For manual lifecycle, `Client` is an async context manager:
 
 ```python
 async with client:
-    result = await client(method)
+    result = await method
 ```
 
 The default `HttpxSession` can also start lazily on the first request. If it is used without an
 application or context manager, the caller remains responsible for `await client.stop()`.
 
-Entering one `Application` concurrently or recursively raises `ApplicationStateError`. Startup
-failure resets its running state. Exit always stops the client and resets that state in `finally`,
-including when the entrypoint fails. Sequential reuse is supported.
+Entering one `Application` or one `Client` concurrently or recursively raises its focused state
+error. Entry failure resets state and unwinds entered contexts; normal failure and cancellation run
+the same cleanup. Sequential reuse is supported.
+
+The current client is scoped with `ContextVar`: nested client scopes restore the outer client,
+independent concurrent tasks can use different clients, and child tasks inherit the client current
+when they are created. Explicit `.as_(client)` still wins over inherited context. A background task
+must not outlive the application/client scope whose session it uses. Constructing `Client()` does
+not install it as current; neither do direct `start()` and `stop()` calls.
+
+## Application lifecycle
+
+`Application` accepts one async context-manager callable named `lifecycle`; there are no separate
+lifecycle callback lists:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from pypokerlost import Application, Client
+
+
+@asynccontextmanager
+async def lifecycle(application: Application) -> AsyncIterator[None]:
+    await WarmupMethod()
+    try:
+        yield
+    finally:
+        await FlushMethod()
+
+
+application = Application(Client(), lifecycle=lifecycle)
+```
+
+The exact entry order is:
+
+```text
+reject overlapping application use
+→ mark application running
+→ start client session
+→ install task-local current client
+→ enter user lifecycle
+→ run caller scope or entrypoint
+```
+
+Exit reverses the entered contexts:
+
+```text
+exit user lifecycle
+→ reset current client
+→ stop client session
+→ mark application not running
+```
+
+Lifecycle setup, the entrypoint, and lifecycle teardown can all use `await method`. Setup failure,
+entrypoint failure, and cancellation unwind the same stack. If application code suppresses normal
+asyncio task cancellation indefinitely, graceful signal shutdown cannot force it to terminate.
+Where loop signal handlers are unsupported, or `run()` is called outside the main thread, execution
+continues normally without signal integration.
 
 ## Package boundaries
 
@@ -99,22 +174,80 @@ The foundation is split by responsibility:
 
 ```text
 pypokerlost/
+├── __init__.py
 ├── application.py
-├── client/                  # Client, bound context, and session adapters
-│   └── session/             # BaseSession and HttpxSession only
-├── contracts/               # fixed wire response models
-├── enums/                   # AccessRole and ServiceName
-├── environment/             # APIServer and PRODUCTION
-├── exceptions/              # public error hierarchy
-├── methods/                 # PokerlostMethod base only
-├── openapi/                 # RpcOpenApiExtra metadata
-├── request/                 # request values and preparation
-├── response/                # response protocol strategies
-└── types/                   # shared JSON types
+├── py.typed
+├── client/
+│   ├── __init__.py
+│   ├── client.py
+│   ├── context_controller.py
+│   ├── current_client.py
+│   └── session/
+│       ├── __init__.py
+│       ├── base_session.py
+│       └── httpx_session.py
+├── contracts/
+│   ├── __init__.py
+│   ├── application_response.py
+│   └── response_model.py
+├── enums/
+│   ├── __init__.py
+│   ├── access_role.py
+│   └── service_name.py
+├── environment/
+│   ├── __init__.py
+│   └── api_server.py
+├── exceptions/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── application.py
+│   ├── base.py
+│   └── client.py
+├── methods/
+│   ├── __init__.py
+│   ├── base.py
+│   ├── accounts/
+│   │   ├── __init__.py
+│   │   └── base.py
+│   └── auth/
+│       ├── __init__.py
+│       └── base.py
+├── lifecycle/
+│   ├── __init__.py
+│   ├── application_lifecycle.py
+│   └── signal_controller.py
+├── openapi/
+│   ├── __init__.py
+│   └── rpc_openapi_extra.py
+├── request/
+│   ├── __init__.py
+│   ├── request_value_preparer.py
+│   ├── rpc_request.py
+│   └── rpc_request_builder.py
+├── response/
+│   ├── __init__.py
+│   ├── application_response_handler.py
+│   └── base_response_handler.py
+└── types/
+    ├── __init__.py
+    └── json.py
+```
+
+Documentation is kept separately:
+
+```text
+docs/
+├── ARCHITECTURE.md
+└── ADDING_METHODS.md
 ```
 
 The complete file tree and dependency rules are in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The authoritative procedure for adding a future
+operation is [`docs/ADDING_METHODS.md`](docs/ADDING_METHODS.md).
+
+The focused `pypokerlost.methods` facade exports `PokerlostMethod`, `AccountsMethod`, and
+`AuthMethod`. The service package facades `pypokerlost.methods.accounts` and
+`pypokerlost.methods.auth` export their respective service base.
 
 The collaboration direction is:
 
@@ -129,9 +262,10 @@ PokerlostMethod
 → ResultT
 ```
 
-`request/`, `response/`, and `client/session/` do not import `Client`. Client binding remains a
-private attribute of the individual method and is passed to future returned Pydantic SDK models only
-through result-validation context.
+`request/`, `response/`, and `client/session/` do not import `Client`. Explicit client binding
+remains a private attribute of the individual method and is passed to future returned Pydantic SDK
+models only through result-validation context. Task-local lookup is isolated in
+`client/current_client.py` and does not enter the request/response/session pipeline.
 
 ## Configure the API server and session
 
@@ -168,10 +302,58 @@ Callers needing another async framework implement `BaseSession.make_request()` a
 inject that session directly. `BaseSession.__call__()` applies its default timeout, currently 10
 seconds, unless the client call supplies `request_timeout=`.
 
+This minimal non-production adapter shows the required boundary. A real adapter must also own and
+close its transport resources and map its transport failures to the appropriate SDK exceptions:
+
+```python
+from collections.abc import Awaitable, Callable
+
+from pypokerlost.client.session import BaseSession
+from pypokerlost.methods import PokerlostMethod
+from pypokerlost.request import RpcRequest, RpcRequestBuilder
+from pypokerlost.response import BaseResponseHandler
+
+type SendRequest = Callable[[RpcRequest, int], Awaitable[tuple[int, str]]]
+
+
+class CustomSession(BaseSession):
+    def __init__(
+        self,
+        *,
+        request_builder: RpcRequestBuilder,
+        response_handler: BaseResponseHandler,
+        send_request: SendRequest,
+        timeout: int = 10,
+    ) -> None:
+        super().__init__(
+            request_builder=request_builder,
+            response_handler=response_handler,
+            timeout=timeout,
+        )
+        self._send_request = send_request
+
+    async def make_request[ResultT](
+        self,
+        method: PokerlostMethod[ResultT],
+        timeout: int,
+    ) -> ResultT:
+        request = self.request_builder.build(method)
+        status_code, content = await self._send_request(request, timeout)
+        return self.response_handler.handle(
+            method=method,
+            service=request.service,
+            operation=request.operation,
+            status_code=status_code,
+            content=content,
+        )
+
+    async def close(self) -> None:
+        return None
+```
+
 ## Method and service metadata
 
-`PokerlostMethod[ResultT]` is a strict Pydantic v2 request model. Each future concrete method must
-declare:
+`PokerlostMethod[ResultT]` is a strict Pydantic v2 request model. Its generic metadata contract is:
 
 ```python
 __service__: ClassVar[ServiceName]
@@ -179,6 +361,23 @@ __api_method__: ClassVar[str]
 __http_method__: ClassVar[str] = "POST"
 __returning__: ClassVar[Any]
 ```
+
+Accounts and auth methods use focused abstract bases that supply only their service identity:
+
+```python
+class AccountsMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.ACCOUNTS
+
+
+class AuthMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.AUTH
+```
+
+Neither base declares `__api_method__`, so neither represents an endpoint. A future concrete method
+inherits the appropriate base and declares `__api_method__`, `__returning__`, request fields, and a
+non-default `__http_method__` only when required. See
+[`docs/ADDING_METHODS.md`](docs/ADDING_METHODS.md) for the mechanical naming, implementation, export,
+and verification steps.
 
 `ServiceName.ACCOUNTS` and `ServiceName.AUTH` identify accountsService and authService. This explicit
 metadata does not select a host, route traffic, add auth, or change behavior for the auth service.
@@ -301,9 +500,9 @@ fetch or parse OpenAPI, or generate methods.
 ## Explicit non-goals
 
 The current package has no authentication implementation or placeholder, token storage, refresh,
-authorization injection, login during startup, retry behavior, streaming API or placeholder,
-concrete Pokerlost methods, endpoint wrappers, multi-service routing, SDK settings, environment
-loading, WebSocket/update processing, OpenAPI generator, or committed test suite.
+authorization injection, automatic login during lifecycle entry, retry behavior, streaming API or
+placeholder, concrete Pokerlost methods, endpoint wrappers, multi-service routing, SDK settings,
+environment loading, WebSocket/update processing, OpenAPI generator, or committed test suite.
 
 `PokerlostUnauthorizedError` only classifies a failed response; it triggers no authentication,
 refresh, retry, or token mutation. `ServiceName.AUTH` only identifies the service.

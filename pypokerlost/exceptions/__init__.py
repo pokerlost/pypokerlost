@@ -18,6 +18,7 @@ from pypokerlost.exceptions.client import (
     ClientContextError,
     ClientDecodeError,
     ClientError,
+    ClientStateError,
     ClientTimeoutError,
 )
 
@@ -27,6 +28,7 @@ __all__ = (
     "ClientContextError",
     "ClientDecodeError",
     "ClientError",
+    "ClientStateError",
     "ClientTimeoutError",
     "PokerlostAPIError",
     "PokerlostBadRequestError",

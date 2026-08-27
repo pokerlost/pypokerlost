@@ -15,12 +15,12 @@ combine a central Pyrogram-like `Client`, aiogram-like typed RPC method objects,
 
 The current package provides typed ordinary-method execution, a pluggable asynchronous session,
 explicit service/request metadata, isolated request preparation, strategy-based response
-interpretation, and automatic application-managed lifecycle. It contains no concrete Pokerlost
-operations.
+interpretation, automatic application-managed lifecycle, and abstract accounts/auth method bases.
+It contains no concrete Pokerlost operations.
 
 ## Current product surface
 
-One `PokerlostMethod` instance supports all three public execution forms:
+One `PokerlostMethod` instance supports all three explicit public execution forms:
 
 ```python
 result = await client(method)
@@ -28,32 +28,73 @@ result = await client.make_request(method)
 result = await method.as_(client)
 ```
 
-`Client.__call__()` binds the method to that client. Awaiting a method uses only its explicit private
-binding; an unbound method raises `ClientContextError`. The SDK has no ambient or task-local current
-client.
-
-`Application` guarantees startup and shutdown around one user entrypoint:
+`Client.__call__()` executes an isolated copy bound to that client, without mutating the caller's
+method. Inside an active application or client async scope, a method may also be awaited directly:
 
 ```python
+result = await method
+```
+
+Client resolution is explicit object binding, then task-local current client, then
+`ClientContextError`. Explicit `.as_(client)` therefore overrides an inherited current client, and
+`.as_(None)` clears the override so ambient lookup applies again.
+
+`Application` composes one managed client, one async-context-manager `lifecycle`, and one user
+entrypoint:
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from pypokerlost import Application, Client
 
-application = Application(Client())
+
+@asynccontextmanager
+async def lifecycle(application: Application) -> AsyncIterator[None]:
+    await WarmupMethod()
+    try:
+        yield
+    finally:
+        await FlushMethod()
+
+
+application = Application(Client(), lifecycle=lifecycle)
 
 
 async def main(client: Client) -> None:
-    result = await client(method)
+    result = await SomeMethod()
 
 
 application.run(main)
 result = await application.run_async(main)
 ```
 
-`run()` uses `asyncio.run()` and `run_async()` supports an already-running loop. Direct application
-scope returns the managed client:
+Entry order is overlapping-use rejection, mark running, enter the client (start the session, then
+install it as task-local current), enter user lifecycle, and return the client. Reverse exit leaves
+the lifecycle, resets the current client, stops the session, and clears the running state. Both
+lifecycle halves and the entrypoint can therefore use implicit `await method`.
+
+`run()` owns its loop through `asyncio.run()` and temporarily handles `SIGINT`/`SIGTERM` where loop
+signal handlers are supported. A handled signal cancels and awaits the application task through
+full lifecycle/session cleanup, removes its handlers, and makes `run()` return `None`. Unsupported
+platforms or threads run normally without signal integration. Application tasks must cooperate
+with normal asyncio cancellation. `run_async()` supports an already-running caller-owned loop and
+does not register process signal handlers. Direct application scope returns the managed client:
+
+```text
+SIGINT or SIGTERM
+→ set shutdown event
+→ cancel entrypoint/application task
+→ exit user lifecycle
+→ reset current client
+→ close HttpxSession
+→ remove installed signal handlers
+→ Application.run() returns None
+```
 
 ```python
 async with application as client:
-    result = await method.as_(client)
+    result = await method
 ```
 
 The same `Application` cannot be entered concurrently or reentrantly. A completed application may
@@ -63,8 +104,29 @@ be entered again because the default session is restartable.
 
 ```python
 async with client:
-    result = await client(method)
+    result = await method
 ```
+
+Current-client state is task-local. Nested scopes restore the previous client, independent
+concurrent tasks may use different clients, and child tasks inherit the client current at task
+creation. A background task must not outlive the application/client scope whose session it uses.
+The same client cannot be entered concurrently or reentrantly. Direct `start()`/`stop()` manage
+session resources only and do not install current-client context.
+
+The generic `PokerlostMethod[ResultT]` is specialized by two abstract service bases:
+
+```python
+class AccountsMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.ACCOUNTS
+
+
+class AuthMethod[ResultT](PokerlostMethod[ResultT]):
+    __service__ = ServiceName.AUTH
+```
+
+They fix service identity only and deliberately do not declare `__api_method__`. Future concrete
+operations inherit from the matching service base and provide authoritative operation, request,
+and result declarations. The mechanical process is documented in `docs/ADDING_METHODS.md`.
 
 ## Server, service, and session configuration
 
@@ -107,13 +169,19 @@ inject an HTTPX client or HTTPX ownership flags.
 
 ## Responsibilities
 
-- `Application`: automatic lifecycle for exactly one `Client` and overlapping-entry rejection.
-- `Client`: default-session selection, explicit method binding, call delegation, and lifecycle
-  delegation.
+- `Application`: composition of one managed `Client`, one user lifecycle, overlapping-entry
+  rejection, and signal-aware synchronous execution.
+- `Client`: default-session selection, isolated explicit method binding, call delegation, session
+  lifecycle delegation, and task-local context during async-context use.
+- `current_client`: one typed `ContextVar` and exact token restoration for task-local client scopes.
 - `ClientContextController`: private bound-object client context, including future response-model
-  validation context.
+  validation context, with explicit-before-ambient resolution.
+- `ApplicationLifecycle`: the single callable async-context-manager extension contract.
+- `SignalController`: temporary supported `SIGINT`/`SIGTERM` integration used only by `run()`.
 - `PokerlostMethod`: typed request fields plus service, operation, HTTP method, and declared result
   metadata.
+- `AccountsMethod` and `AuthMethod`: abstract method bases that supply only their fixed
+  `ServiceName` metadata.
 - `AccessRole` and `ServiceName`: SDK-owned metadata enums in `pypokerlost.enums`.
 - `APIServer`: immutable one-base operation URL template without service routing.
 - `RequestValuePreparer`: strict recursive JSON-compatible value preparation.
@@ -234,12 +302,13 @@ combinations, infers a service, fetches OpenAPI, parses schemas, or generates me
 
 ## Current scope
 
-The next feature work should add authoritative accountsService and authService operations with
-their real request/result models and errors. The current package intentionally has no:
+The next feature work should add authoritative accountsService and authService operations as
+ordinary subclasses of the matching service base, with their real request/result models and
+errors. The current package intentionally has no:
 
 - concrete API methods or endpoint-specific `Client` wrappers;
-- authentication state or placeholder, token handling, authorization injection, refresh, login
-  during startup, or special handling for `ServiceName.AUTH`;
+- authentication state or placeholder, token handling, authorization injection, refresh, automatic
+  login during lifecycle entry, or special handling for `ServiceName.AUTH`;
 - streaming API or placeholder;
 - OpenAPI fetching, parsing, method generation, generated source, or code-generation CLI;
 - multi-service routing, discovery, retries, WebSocket/update handling, SDK settings, or environment

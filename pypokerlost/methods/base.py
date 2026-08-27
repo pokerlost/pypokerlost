@@ -8,7 +8,6 @@ from pydantic import ConfigDict
 
 from pypokerlost.client.context_controller import ClientContextController
 from pypokerlost.enums import ServiceName
-from pypokerlost.exceptions import ClientContextError
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
@@ -33,7 +32,4 @@ class PokerlostMethod[ResultT](ClientContextController, ABC):
         return await client(self)
 
     def __await__(self) -> Generator[Any, None, ResultT]:
-        client = self.client
-        if client is None:
-            raise ClientContextError
-        return self.emit(client).__await__()
+        return self.emit(self.resolve_client()).__await__()

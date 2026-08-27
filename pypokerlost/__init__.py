@@ -1,4 +1,5 @@
-from importlib.metadata import PackageNotFoundError, version as _distribution_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _distribution_version
 
 from pypokerlost.application import Application
 from pypokerlost.client import Client
@@ -9,6 +10,7 @@ from pypokerlost.exceptions import (
     ClientContextError,
     ClientDecodeError,
     ClientError,
+    ClientStateError,
     ClientTimeoutError,
     PokerlostAPIError,
     PokerlostError,
@@ -29,6 +31,7 @@ __all__ = (
     "ClientContextError",
     "ClientDecodeError",
     "ClientError",
+    "ClientStateError",
     "ClientTimeoutError",
     "PokerlostAPIError",
     "PokerlostError",

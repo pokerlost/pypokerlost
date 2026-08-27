@@ -14,12 +14,20 @@ class ClientError(PokerlostError):
 
 
 class ClientContextError(ClientError):
-    """Raised when an awaited method is not bound to a client."""
+    """Raised when an awaited method cannot resolve a client."""
 
     def __init__(self) -> None:
         super().__init__(
-            "Method is not bound to a Client; call method.as_(client) before awaiting it"
+            "No Client is available; use await client(method), await method.as_(client), "
+            "or await method inside an Application/client lifecycle"
         )
+
+
+class ClientStateError(ClientError):
+    """Raised when a client async-context entry is invalid."""
+
+    def __init__(self) -> None:
+        super().__init__("Client async context is already active")
 
 
 class ClientDecodeError(ClientError):
