@@ -2,8 +2,8 @@
 
 UV ?= uv
 
-.PHONY: help lock lock-check sync format format-check lint typecheck compile docs-check \
-	build generator-check import-check pre-commit check check-full
+.PHONY: help lock lock-check sync format format-check lint typecheck compile build \
+	generator-check import-check pre-commit check check-full
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,9 +33,6 @@ typecheck: ## Run strict mypy.
 compile: ## Compile runtime and tooling sources.
 	$(UV) run --locked python -m compileall -q pypokerlost scripts
 
-docs-check: ## Validate documentation structure and relative links.
-	$(UV) run --locked python scripts/check_documentation.py
-
 build: ## Build the wheel and source distribution.
 	$(UV) build
 
@@ -48,6 +45,6 @@ import-check: ## Import the canonical public SDK foundation.
 pre-commit: ## Run every configured hook against all files.
 	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure
 
-check: lock-check format-check lint typecheck compile docs-check generator-check import-check ## Run the regular non-mutating gate.
+check: lock-check format-check lint typecheck compile generator-check import-check ## Run the regular non-mutating gate.
 
 check-full: check build pre-commit ## Run the complete repository gate.

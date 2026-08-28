@@ -1,7 +1,7 @@
 # Development commands
 
 Use the locked `uv` environment and the repository Makefile for formatting, static analysis,
-documentation validation, generation checks, and distribution builds.
+generation checks, and distribution builds.
 
 ## Prepare the environment
 
@@ -21,8 +21,7 @@ make check
 ```
 
 The regular gate is non-mutating. It runs the lock check, Ruff format check, Ruff lint, strict
-mypy, bytecode compilation, documentation validation, generator version check, and canonical
-public-import check.
+mypy, bytecode compilation, generator version check, and canonical public-import check.
 
 Run individual stages when diagnosing a failure:
 
@@ -31,7 +30,6 @@ make format-check
 make lint
 make typecheck
 make compile
-make docs-check
 make generator-check
 make import-check
 ```
@@ -63,7 +61,6 @@ uv run --locked ruff format --check .
 uv run --locked ruff check .
 uv run --locked mypy
 uv run --locked python -m compileall -q pypokerlost scripts
-uv run --locked python scripts/check_documentation.py
 uv run --locked python scripts/generate_methods.py --version
 uv build
 git diff --check

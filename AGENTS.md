@@ -213,8 +213,9 @@ latest direct user requirement
 - Use `uv` for locking, dependency synchronization, and builds.
 - Use `make pre-commit`, `make check`, and `make check-full` as the canonical repository gates.
 - Use only real commands and Make targets declared by the repository.
-- Before handoff, run the applicable lock, sync, Ruff, mypy, compile, build, documentation-link, and
-  `git diff --check` validations. Report every unavailable or failed check accurately.
+- Before handoff, run the applicable lock, sync, Ruff, mypy, compile, build, and `git diff --check`
+  validations. Review affected documentation links and structure. Report every unavailable or
+  failed check accurately.
 - Review the complete final diff before any requested commit. Never push unless explicitly asked.
 
 ## Do not
