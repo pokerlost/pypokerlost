@@ -1,29 +1,83 @@
-.git
-.gitignore
-.venv/
-dist/
-build/
-__pycache__/
+# Keep project-relevant rules aligned with .gitignore.
+
+### Version control
+
+.git/
+
+
+### Python
+
+# Byte-compiled / optimized files
 **/__pycache__/
-*.py[cod]
 **/*.py[cod]
-*.egg-info/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.env
-.env.*
-.agents/
-.codex/
+
+# Distribution / packaging
+/build/
+/dist/
+**/*.egg-info/
+
+# Python environments
+**/.env
+**/.env.*
+!**/.env.example
+/.venv/
+/env/
+/venv/
+/ENV/
+/env.bak/
+/venv.bak/
+
+# Python version managers
+/.python-version
+
+# Testing / coverage
+**/.pytest_cache/
+**/.hypothesis/
+/.tox/
+/.nox/
+/.cache/
+/coverage/
+/htmlcov/
+/cover/
+/.coverage
+/.coverage.*
+/coverage.xml
+**/*.cover
+**/*.py,cover
+
+# Linters / type checkers
+**/.ruff_cache/
+**/.mypy_cache/
+/.dmypy.json
+/dmypy.json
+/.pyre/
+/.pytype/
+
+# Documentation output
+/docs/_build/
+/site/
+
+
+### IDEs / editors
+
 .idea/
 .vscode/
-*.swp
-.DS_Store
-.smoke/
-.smoke.*
-smoke_*.py
-*_smoke.py
-tmp_smoke*
+.spyderproject
+.spyproject
+.ropeproject
+
+
+### AI agents
+
+.agents/
+.codex/
+.claude/
+
+
+### OS / temporary files
+
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+**/*~
