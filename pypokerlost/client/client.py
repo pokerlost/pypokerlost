@@ -1,3 +1,5 @@
+"""Central asynchronous PokerLost API client."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -6,11 +8,11 @@ from types import TracebackType
 from typing import Self, cast
 
 from pypokerlost.client.current_client import use_current_client
+from pypokerlost.client.request import RequestOptions
 from pypokerlost.client.session import BaseSession, HttpxSession
 from pypokerlost.exceptions import ClientStateError
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.middleware import BaseMiddleware, MiddlewareHandler
-from pypokerlost.request import RPCRequestOptions
 from pypokerlost.storage import BaseStorage, MemoryStorage
 
 
@@ -69,15 +71,15 @@ class Client:
             return await self.session(
                 executing_method,
                 timeout=request_timeout,
-                options=RPCRequestOptions(),
+                options=RequestOptions(),
             )
 
         async def session_handler[NextResultT](
             next_method: PokerlostMethod[NextResultT],
             *,
-            options: RPCRequestOptions | None = None,
+            options: RequestOptions | None = None,
         ) -> NextResultT:
-            request_options = options if options is not None else RPCRequestOptions()
+            request_options = options if options is not None else RequestOptions()
             return await self.session(
                 next_method,
                 timeout=request_timeout,
@@ -97,14 +99,14 @@ class Client:
         async def wrapped_handler[ResultT](
             method: PokerlostMethod[ResultT],
             *,
-            options: RPCRequestOptions | None = None,
+            options: RequestOptions | None = None,
         ) -> ResultT:
-            request_options = options if options is not None else RPCRequestOptions()
+            request_options = options if options is not None else RequestOptions()
 
             async def next_handler[NextResultT](
                 next_method: PokerlostMethod[NextResultT],
                 *,
-                options: RPCRequestOptions | None = None,
+                options: RequestOptions | None = None,
             ) -> NextResultT:
                 next_options = options if options is not None else request_options
                 executing_next_method = (

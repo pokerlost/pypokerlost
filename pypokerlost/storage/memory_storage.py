@@ -1,3 +1,5 @@
+"""In-memory client storage implementation."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

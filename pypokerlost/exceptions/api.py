@@ -1,3 +1,5 @@
+"""PokerLost API and protocol exceptions."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -30,7 +32,7 @@ class PokerlostAPIError(PokerlostError):
         self.error = error
         self.error_message = error_message
         super().__init__(
-            f"Pokerlost API error {error!r}: {error_message}; "
+            f"PokerLost API error {error!r}: {error_message}; "
             f"operation={operation!r}; status_code={status_code}"
         )
 
@@ -48,5 +50,5 @@ class PokerlostProtocolError(PokerlostError):
         self.operation = operation
         self.status_code = status_code
         super().__init__(
-            f"Pokerlost protocol error; operation={operation!r}; status_code={status_code}",
+            f"PokerLost protocol error; operation={operation!r}; status_code={status_code}",
         )

@@ -1,3 +1,5 @@
+"""Base contract for typed PokerLost API methods."""
+
 from __future__ import annotations
 
 import abc
@@ -6,30 +8,29 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import ConfigDict
 
-from pypokerlost.client.context_controller import ClientContextController
-from pypokerlost.types import HTTPMethod, RPCOperation
+from pypokerlost.types import APIOperation, HTTPMethod, PokerlostType
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
 
 
-class PokerlostMethod[ResultT](ClientContextController, abc.ABC):
-    """Typed request fields, RPC metadata, and optional explicit client binding."""
+class PokerlostMethod[ResultT](PokerlostType, abc.ABC):
+    """Typed request fields, operation metadata, and optional explicit client binding."""
 
     model_config = ConfigDict(
         allow_inf_nan=False,
         extra="forbid",
         strict=True,
         validate_default=True,
-        arbitrary_types_allowed=True,
+        hide_input_in_errors=True,
     )
 
     __http_method__: ClassVar[HTTPMethod] = "POST"
 
     @property
     @abc.abstractmethod
-    def __api_method__(self) -> RPCOperation:
-        """Return the complete RPC operation identifier."""
+    def __api_method__(self) -> APIOperation:
+        """Return the complete API operation identifier."""
 
     @property
     @abc.abstractmethod

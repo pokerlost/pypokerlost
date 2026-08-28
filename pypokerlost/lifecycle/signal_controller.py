@@ -1,3 +1,5 @@
+"""Process-signal coordination for synchronous application runs."""
+
 from __future__ import annotations
 
 import asyncio

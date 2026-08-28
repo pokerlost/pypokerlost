@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:0.12.6-python3.13-trixie-slim AS build
+FROM ghcr.io/astral-sh/uv:0.12.6-python3.14-trixie-slim AS build
 
 WORKDIR /workspace
 

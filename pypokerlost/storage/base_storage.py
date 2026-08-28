@@ -1,3 +1,5 @@
+"""Validated asynchronous storage contract."""
+
 from __future__ import annotations
 
 import abc

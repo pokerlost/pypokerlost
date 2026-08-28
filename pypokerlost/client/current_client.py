@@ -1,3 +1,5 @@
+"""Task-local current-client state."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator

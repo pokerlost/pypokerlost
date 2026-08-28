@@ -1,17 +1,53 @@
+.DEFAULT_GOAL := help
+
 UV ?= uv
 
-.PHONY: format lint typecheck build
+.PHONY: help lock lock-check sync format format-check lint typecheck compile docs-check \
+	build generator-check import-check pre-commit check check-full
 
-format:
-	$(UV) run ruff format .
-	$(UV) run ruff check --fix .
+help: ## Show this help.
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-lint:
-	$(UV) run ruff format --check .
-	$(UV) run ruff check .
+lock: ## Resolve dependencies and update uv.lock.
+	$(UV) lock
 
-typecheck:
-	$(UV) run mypy
+lock-check: ## Verify that uv.lock matches project metadata.
+	$(UV) lock --check
 
-build:
+sync: ## Install every locked dependency group.
+	$(UV) sync --locked --all-groups
+
+format: ## Apply safe Ruff fixes and formatting.
+	$(UV) run --locked ruff check --fix .
+	$(UV) run --locked ruff format .
+
+format-check: ## Check Ruff formatting without changing files.
+	$(UV) run --locked ruff format --check .
+
+lint: ## Run Ruff lint without changing files.
+	$(UV) run --locked ruff check .
+
+typecheck: ## Run strict mypy.
+	$(UV) run --locked mypy
+
+compile: ## Compile runtime and tooling sources.
+	$(UV) run --locked python -m compileall -q pypokerlost scripts
+
+docs-check: ## Validate documentation structure and relative links.
+	$(UV) run --locked python scripts/check_documentation.py
+
+build: ## Build the wheel and source distribution.
 	$(UV) build
+
+generator-check: ## Verify that the generator imports and reports its version.
+	$(UV) run --locked python scripts/generate_methods.py --version
+
+import-check: ## Import the canonical public SDK foundation.
+	$(UV) run --locked python -c "from pypokerlost import Client, PokerlostMethod; from pypokerlost.types import APIOperation; print(Client.__name__, PokerlostMethod.__name__, APIOperation)"
+
+pre-commit: ## Run every configured hook against all files.
+	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure
+
+check: lock-check format-check lint typecheck compile docs-check generator-check import-check ## Run the regular non-mutating gate.
+
+check-full: check build pre-commit ## Run the complete repository gate.

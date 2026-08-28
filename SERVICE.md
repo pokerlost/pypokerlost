@@ -1,60 +1,39 @@
 # pypokerlost
 
-`pypokerlost` is the generic asynchronous Python SDK core for Pokerlost RPC APIs. It provides typed
-method objects, a central client, a pluggable asynchronous session, generic client-owned
-JSON-compatible state storage, a fixed response envelope, and an application lifecycle coordinator.
+`pypokerlost` is the typed asynchronous Python SDK shared by PokerLost services.
 
-## Product surface
+## Purpose
 
-Methods execute with `await client(method)`, `await client.make_request(method)`, or
-`await method.as_(client)`. Inside an active `Application` or `Client` scope, `await method` resolves
-the task-local current client. Explicit execution uses an isolated method copy and never mutates the
-caller's reusable method instance.
+Provide one canonical Python interface for describing and executing typed PokerLost API operation
+calls while keeping service business rules outside the SDK.
 
-`Client()` uses a lazy, restartable `HttpxSession` and a `MemoryStorage` by default. Callers may
-inject any `BaseSession` and `BaseStorage`. The fixed default gateway is
-`APIServer.from_base("http://localhost:8080/api")`; an operation such as `accounts.get` maps to
-`http://localhost:8080/api/accounts.get`.
+## Responsibilities
 
-Caller-defined middleware is an ordered, client-owned collection. Constructor input is copied,
-`add_middleware()` appends one component, and every request executes against an immutable snapshot
-with the first configured component outermost. A polymorphic next handler can execute another
-method through the remaining chain, while immutable `RPCRequestOptions` carries copy-owned headers
-for only that execution.
+- Own the reusable `Client`, session, request, and response pipeline.
+- Own `PokerlostType` and `MutablePokerlostType` as bases for typed API objects.
+- Own `PokerlostMethod` and the conventions for generated request methods and result types.
+- Own client middleware and client-local JSON-compatible storage abstractions.
+- Own application lifecycle coordination around one client.
+- Own development-time OpenAPI-to-SDK generation tooling.
 
-`Application` owns one client and one user-supplied async-context-manager lifecycle. `run()` owns an
-event loop and performs graceful supported `SIGINT`/`SIGTERM` cancellation and cleanup;
-`run_async()` uses a caller-owned loop without process-signal ownership. The client starts storage
-before its session and closes the session before storage.
+## Service-specific rules
 
-The repository also provides one development-only OpenAPI 3.1 JSON method generator. File and
-service sources share one deterministic pipeline and produce ordinary SDK method modules that use
-public package contracts. Generation tooling remains outside the runtime package and is not a
-runtime SDK facility.
+- Public API objects inherit `PokerlostType`; deliberately mutable objects inherit
+  `MutablePokerlostType`.
+- API method objects inherit `PokerlostMethod` and declare the operation, HTTP method, and result
+  type.
+- Generated request methods live under `pypokerlost.methods.<service_package>`.
+- Generated returned and nested API objects live under `pypokerlost.types.<service_package>`.
+- Transport request, response, session, and API-target mechanics live under `pypokerlost.client`.
+- The operation string is the full operation identity; the SDK does not route by service metadata.
+- The fixed response envelope contains `ok`, `result`, `error`, and `error_message`.
+- A client owns one session, one storage backend, and its ordered middleware configuration.
 
-## Fixed decisions
+## Boundaries
 
-- `PokerlostMethod[ResultT]` is the only production method base.
-- The operation string is the complete RPC identity; no service metadata or routing exists.
-- Requests contain only operation, HTTP method, URL, immutable UTF-8 content, and immutable string
-  headers.
-- Pydantic JSON-mode serialization is the sole request normalization layer. Request and generic
-  JSON-value boundaries reject non-finite floats, and the default encoder emits strict JSON.
-- Storage is generic client-owned `JSONValue` state and remains outside the RPC transport pipeline.
-- Storage accepts optional positive finite relative TTL; expired entries behave as missing entries.
-- `ApplicationResponseHandler` interprets the fixed `ApplicationResponse` envelope and validates
-  the declared result type with JSON semantics.
-- Every valid failed envelope raises `PokerlostAPIError`; its stable `error` code identifies the
-  business failure. Successful envelopes paired with non-2xx status raise
-  `PokerlostProtocolError`. RPC exceptions retain only safe scalar metadata, never a method or
-  client reference. Safe built-in causes preserve external failure categories without retaining
-  transport requests or decoder input.
-- `RPCOpenAPIExtra` emits generic OpenAPI security requirements using service-defined scope strings.
+The SDK does not own PokerLost service business logic, direct database access, accounts or
+authentication implementations, token handling, authorization scope policy, service discovery,
+service routing, retry policy, streaming, WebSocket/events, or multiple transport protocols.
 
-## Non-goals
-
-The core contains no concrete RPC methods, accounts/auth implementation, service-specific bases,
-service or role enums, authentication, token handling, service routing, retries, streaming,
-endpoint-specific client facade, runtime OpenAPI generation, settings system, predefined storage
-keys, default or sliding TTL, expiration workers, transactions, queues, pub/sub, encryption,
-external persistence implementation, or compatibility aliases.
+Concrete service methods and API object types are generated or maintained by service consumers;
+the core repository intentionally ships none.

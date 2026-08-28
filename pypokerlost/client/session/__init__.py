@@ -1,3 +1,5 @@
+"""Asynchronous transport session primitives."""
+
 from __future__ import annotations
 
 from .base_session import DEFAULT_TIMEOUT, BaseSession

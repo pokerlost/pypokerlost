@@ -1,3 +1,5 @@
+"""Client-owned storage facade."""
+
 from __future__ import annotations
 
 from pypokerlost.types import StorageKey, StorageTTL

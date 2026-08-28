@@ -1,3 +1,5 @@
+"""Public PokerLost SDK exception facade."""
+
 from __future__ import annotations
 
 from pypokerlost.exceptions.api import (

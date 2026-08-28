@@ -1,331 +1,89 @@
 # pypokerlost engineering rules
 
+This file defines the normative rules for changing the SDK. Product boundaries live in
+`SERVICE.md`; explanations and user guidance live under `docs/`.
+
 ## Before every task
 
-Read `AGENTS.md`, `SERVICE.md`, and `docs/ARCHITECTURE.md`; inspect the relevant implementation,
-`git status`, and `git diff`. The working tree is authoritative.
+- Read `AGENTS.md`, `SERVICE.md`, and `docs/architecture/overview.md`.
+- Inspect the relevant implementation, every call site affected by the task, `git status --short`,
+  and `git diff`.
+- Treat the working tree and the current implementation as authoritative.
+- Make only changes required by the latest task; preserve unrelated user changes.
 
-Decision priority:
+## Priority
+
+Resolve conflicting guidance in this order:
 
 ```text
 latest direct user requirement
 → SERVICE.md
 → AGENTS.md
-→ docs/ARCHITECTURE.md
+→ docs/architecture/overview.md
 → older decisions
 ```
 
-## Repository and API discipline
+## Architecture
 
-- The repository root is `pokerlost/`; the distribution and import package are `pypokerlost`.
-- Runtime code lives directly under `pypokerlost/`. Do not add a `src/` layout or nested repository.
-- The asynchronous SDK core is hand-maintained; concrete method and result modules may be
-  generator-owned.
-- Runtime dependencies remain `pydantic` and `httpx`. Do not add, remove, replace, upgrade,
-  downgrade, or change dependency constraints without the latest direct user requirement.
-- Project-owned identifiers use `middleware` as a singular collective noun.
-- Public user guides under `docs/` use lowercase `snake_case` filenames. Canonical and normative
-  files such as `README.md`, `AGENTS.md`, `SERVICE.md`, and `docs/ARCHITECTURE.md` retain their
-  standard uppercase names.
-- `README.md` contains local source-build instructions and documentation links only.
-- The repository `Dockerfile` builds wheel and source-distribution artifacts only. It is not a
-  runtime application image and has no publishing responsibility.
+- The repository root is the Python project root. Runtime code lives directly under
+  `pypokerlost/`; do not add a `src/` layout or nested repository.
+- Keep one generic `PokerlostMethod`, one central `Client`, and one `Application` lifecycle owner.
+- Runtime dependencies remain `pydantic` and `httpx`. Do not change dependency constraints without
+  a direct requirement.
+- Keep typed API objects under `pypokerlost/types/` and API method objects under
+  `pypokerlost/methods/`.
+- Keep transport targeting and execution under `pypokerlost/client/`:
 
-## Fixed engineering boundaries
+  ```text
+  client/api_server.py
+  client/request/
+  client/response/
+  client/session/
+  ```
 
-- Keep one generic `PokerlostMethod`, one central `Client`, and one application lifecycle owner.
-- Methods declare request fields, `__api_method__`, `__http_method__`, and `__returning__` only.
-- Do not add service metadata, service bases, or metaclasses.
-- Keep the single task-local current-client mechanism in `client/current_client.py`. Resolution is
-  explicit `.as_(client)`, then current client, then `ClientContextError`.
-- `BaseMiddleware` is the single RPC middleware contract. `Client` owns a mutable ordered
-  middleware list, copies optional constructor input, and supports append-only registration through
-  `add_middleware()`. Each request takes an immutable tuple snapshot before building its chain; the
-  first configured component is the outermost.
-- `MiddlewareHandler` is polymorphic over each method it receives, so middleware may execute a
-  different result type through the remaining chain. `RPCRequestOptions` is the one typed
-  per-request transport extension and owns immutable ordered string headers. Omitting options in a
-  next-handler call inherits the current options; supplying options replaces them for that call.
-- Middleware wraps only RPC execution through `Client.make_request()`. Do not pass it into client,
-  session, storage, or application lifecycle operations, or into session, request, response,
-  storage, method, or OpenAPI layers. The SDK provides no built-in authorization or retry
-  middleware.
-- Request, response, and session layers must not import `Client`. Do not pass `Client`, arbitrary
-  dictionaries, generic context bags, service locators, dependency containers, or middleware
-  contexts through those layers as future extension hooks. `RPCRequestOptions` and its copied
-  immutable headers are the sole typed exception to that restriction.
-- `ApplicationResponse` and `ResponseModel` are the fixed public wire contracts.
-- Do not add tests, CI/CD, Docker Compose, runtime containers, Helm, authentication, retries,
-  streaming, service routing, or code generation unless the latest direct user requirement
-  explicitly requests them.
-- The runtime SDK has no token-handling behavior, predefined token keys, refresh, endpoint wrappers,
-  dynamic OpenAPI generation, or concrete RPC methods.
-- OAuth2 scopes are service-defined strings used only in OpenAPI metadata; they are not runtime
-  authorization policy and must not become a central enum.
+- `OpenAPIExtra` lives at `pypokerlost/openapi_extra.py` and owns only non-authorization contract
+  metadata.
+- Request, response, and session layers must not import `Client`. Storage remains a client-owned
+  sibling of the session and outside transport.
+- Prefer focused composition. Do not add service locators, dependency containers, registries,
+  factories, managers, service bases, or metaclasses without a concrete current consumer.
 
-## Storage boundaries
+## Public API
 
-- `Client` owns one `BaseSession` and one `BaseStorage`. `Client()` selects `HttpxSession` and
-  `MemoryStorage` by default; injected resources use the same ownership and lifecycle.
-- `BaseStorage` centrally validates `StorageKey`, `JSONValue`, and `StorageTTL` through reusable
-  Pydantic adapters and owns defensive copying on both `set()` and `get()`.
-- `StorageTTL` is `int | float | timedelta | None`. `BaseStorage` rejects booleans and non-positive
-  or non-finite lifetimes, and normalizes accepted TTL to relative `float | None` for backends.
-  Absence and expiration are both reported with `StorageKeyNotFoundError`, so a stored top-level
-  `None` remains unambiguous.
-- Client startup is `storage.start()` then `session.start()`. Shutdown is `session.close()` then
-  `storage.close()`, and both close operations must be attempted. A session startup failure closes
-  already-started storage before the original failure is re-raised.
-- Storage is a client-owned sibling of the session, never part of RPC transport. Request, response,
-  session, method, and OpenAPI modules must not import or automatically access storage. Storage must
-  not import those layers or `Client`.
-- `MemoryStorage` uses monotonic time and opportunistic expiration without a cleanup task. Reads do
-  not extend TTL; replacing a key replaces its expiration, and setting it without TTL removes a
-  previous expiration.
-- Do not add a global storage instance, storage `ContextVar`, ownership flags, automatic request or
-  response persistence, authentication behavior, predefined keys, default or sliding TTL,
-  TTL mutation/introspection operations, transactions, queues, pub/sub, a cleanup worker, or an
-  external backend without a latest direct user requirement.
-- `MemoryStorage.close()` releases no data and does not pause TTL: it is idempotent, non-expiring
-  values survive sequential stop/start cycles on the same instance, and expired values never
-  reappear. Only `clear()` deliberately removes every value.
+- Treat package facades and documented import paths as deliberate public API.
+- Do not rename, move, remove, or add compatibility aliases for public artifacts without a direct
+  requirement.
+- Keep `__init__.py` files focused; use explicit `__all__` only for intentional facades.
+- Prefer one primary public artifact per module. Add a file or abstraction only for a current use.
+- Keep constructors free of mutable collection defaults. Use `None` when runtime mutation is
+  supported and copy caller-owned collections.
+- Preserve established names and casing: `PokerlostType`, `MutablePokerlostType`,
+  `PokerlostMethod`, `APIOperation`, `APIServer`, `HttpxSession`, `OpenAPIExtra`, `JSONValue`,
+  `HTTPMethod`, `Request`, `RequestBuilder`, `RequestOptions`, `Response`, and `ResponseHandler`.
+- Project-owned modules, functions, parameters, and attributes use lowercase `snake_case`.
+  `middleware` is a singular collective noun.
 
-## Method-generation tooling
+## Python and typing
 
-- `scripts/generate_methods.py` is the one authoritative generator. Its Typer `file` and `service`
-  commands differ only in how they obtain a validated `OpenAPIDocument`; resolution, rendering,
-  manifest policy, and writing remain one shared deterministic pipeline.
-- Local JSON and generated text I/O use `aiofiles` through asynchronous context managers. Service
-  discovery uses a directly scoped `httpx.AsyncClient`; it never routes through SDK runtime
-  infrastructure.
-- Generator code remains under `scripts/` and must not import `Client`, `Application`, sessions,
-  middleware, storage, lifecycle, request builders, response handlers, current-client internals,
-  private `pypokerlost` modules, or private names.
-- Reuse stable public contracts through focused facades: `ApplicationResponse`, `JSONValue`,
-  `HTTPMethod`, and `RPCOperation`. Generated methods import `PokerlostMethod` from
-  `pypokerlost.methods` and never import `scripts` or development-only dependencies.
-- OpenAPI models, local reference resolution, rendering, naming, generated-file values, canonical
-  source hashing, manifest representation, safe overwrite policy, CLI settings, and generator
-  SemVer policy belong to the generator script, not the runtime package.
-- Typer and aiofiles remain development/tooling dependencies. Do not duplicate or move them into
-  runtime dependencies, and do not add YAML input or another CLI framework.
-- The manifest records generator version, OpenAPI version, canonical source hash, and owned files.
-  Manifest state is scoped by the canonical output root, so distinct `--output` roots cannot share
-  version or ownership history.
-  Owned paths are normalized relative Python paths inside the generated service subpackage. Only
-  manifest-owned generated files may be removed; manual files are not overwritten without an
-  explicit `--force`.
-- OpenAPI document parsing retains component schemas as JSON values. Strict generator-schema
-  validation begins only when a selected request or successful response makes a schema reachable;
-  unused framework-owned components cannot block generation.
-- Both generator and OpenAPI contract versions use `MAJOR.MINOR.PATCH`. Generator `MAJOR` covers an
-  incompatible generated layout, generated public API, manifest format, or CLI change; `MINOR`
-  covers backward-compatible OpenAPI support or optional CLI capability; `PATCH` covers bug fixes
-  and internal refactors that preserve those contracts. Do not increment for unreleased internal
-  cleanup unless project release policy requires it.
-- A canonical OpenAPI content change requires an `info.version` precedence increase. Reject a
-  downgrade or same-version content change unless `--force` is deliberately supplied.
-
-## Python code style
-
-### Language and formatting
-
-- Write production identifiers, comments, docstrings, exception messages, and technical
-  documentation in English.
-- Follow the Python version and formatting configuration declared in `pyproject.toml`.
-- Ruff is the formatting, import-order, and lint authority.
-- Mypy strict mode is the typing authority.
-- Do not manually fight tool formatting.
-- Keep lines readable; do not compress logic merely to reduce line count.
-- Use trailing commas in multiline calls, collections, signatures, and type declarations so Ruff
-  can format them consistently.
-
-### Project-owned acronym naming
-
-Product-prefixed Python names use the single PascalCase word `Pokerlost`. In project-owned
-`PascalCase` identifiers, preserve established technical acronyms in uppercase:
-
-```text
-RPCRequest
-RPCRequestBuilder
-RPCOpenAPIExtra
-APIServer
-PokerlostAPIError
-PokerlostProtocolError
-JSONDumps
-JSONLoads
-JSONValue
-HTTPMethod
-OAuth2Scope
-URL
-UUID
-SDK
-```
-
-These examples define casing; they do not authorize artifacts outside the fixed engineering
-boundaries. Preserve official external-library and specification branding:
-
-```text
-HttpxSession
-httpx
-Pydantic
-OpenAPI
-OAuth2
-PostgreSQL
-SQLAlchemy
-FastAPI
-```
-
-In particular, keep `HttpxSession`; do not write `HTTPXSession`.
-
-Modules, functions, parameters, attributes, and local variables use normal lowercase `snake_case`:
-
-```text
-rpc_request.py
-rpc_request_builder.py
-rpc_openapi_extra.py
-api_server.py
-json_dumps
-request_timeout
-oauth2_scopes
-```
-
-Never produce acronym-split module names such as `r_p_c_request.py`.
-
-Do not use vague artifact names:
-
-```text
-utils.py
-helpers.py
-common.py
-misc.py
-manager.py
-a.py
-b.py
-temp.py
-```
-
-A module and its main artifact must communicate their responsibility.
-
-### Files and public surface
-
-- Prefer one primary public artifact per focused module.
-- A module may contain small private helpers only when they exist solely to support that artifact.
-- Add a package or file only for a concrete current use.
-- Keep `__init__.py` files as intentional facades; do not turn them into export dumps.
-- Use explicit `__all__` only for a deliberate public facade.
-- Do not change public APIs without a direct requirement.
-- Constructor collection defaults use `None` when runtime mutation is supported; do not use a
-  mutable default or an unexplained empty tuple for that case.
-- Do not keep obsolete modules, duplicate APIs, or compatibility aliases unless the latest user
-  requirement explicitly requires backward compatibility.
-- When replacing an internal abstraction, remove its old implementation, imports, exports,
-  documentation, and packaging references in the same task.
-
-### Imports
-
-- Every Python source file, including package initializers, scripts, and generator-owned modules,
-  must contain exactly one `from __future__ import annotations`. Place it after an optional shebang
-  and encoding comment and after the module docstring, when present, but before every ordinary
-  import and all executable code. Ordinary leading comments may remain before it, and Python source
-  renderers must emit it in the same position.
-- Use explicit imports; wildcard imports are forbidden.
-- Abstract classes use `import abc` with `abc.ABC` and `abc.abstractmethod`. Do not use
-  `from abc import ...`.
-- Group imports as standard library, third-party, then `pypokerlost`.
-- Prefer absolute `pypokerlost...` imports across package boundaries.
-- A short relative import is acceptable only inside one tightly focused subpackage when it makes
-  the dependency clearer and does not obscure the imported package.
-- Use `TYPE_CHECKING` for type-only imports that would otherwise create a runtime cycle.
-- Do not solve circular imports with dynamic imports, imports inside arbitrary methods,
-  monkey-patching, string-based service locators, or facade abuse.
-- Do not import from private implementation modules of dependencies.
-- Every production import must resolve from the standard library, declared dependencies, or the
-  current package.
-
-### Typing
-
-- Use modern Python typing supported by the configured minimum Python version, including PEP 695
-  type parameters and `type` aliases where they improve clarity.
-- Type every public function, method, property, context manager, and stored collaborator.
-- Use the narrowest truthful type.
-- Do not use `object` as a generic escape hatch.
-- Do not spread `Any` through application code. Contain it at genuine dynamic boundaries such as
-  custom JSON decoding, Pydantic runtime type metadata, or validation context.
-- Prefer `collections.abc` types for callable, iterator, mapping, and context-manager contracts.
-- Prefer `Self` for fluent methods and alternative constructors.
-- Do not use `# type: ignore` to conceal an architectural problem. A localized ignore is allowed
-  only when the type system cannot express a verified runtime boundary, and it must include the
-  exact error code.
-- Do not use `cast(Any, ...)`.
-- Do not inspect `__orig_bases__`, MRO internals, Pydantic private metadata, or generic internals to
-  recover types dynamically.
-- Do not add a `Protocol`, abstract base class, or generic type parameter without a current consumer
-  and a concrete reason.
-
-### Classes and design patterns
-
-- Every class owns one clear responsibility and one reason to change.
-- Use design patterns or new abstractions to clarify an existing collaboration with a concrete
-  current use, not to decorate the architecture.
-- Prefer composition over inheritance for interchangeable collaborators.
-- Use inheritance for a real semantic subtype or a stable execution contract.
-- A single implementation does not justify an abstract factory, registry, plugin system, command
-  bus, service locator, or dependency-injection container. `Client` composes its middleware list
-  and request snapshot directly; do not add a middleware manager, chain, registry, or factory
-  abstraction.
-- Do not create `Manager`, `Helper`, `Utils`, `Service`, `Factory`, or `Registry` classes without a
-  precise current responsibility that cannot be expressed by an existing component.
-- Reuse an existing implementation before adding another abstraction that performs the same work.
-- Remove verified duplication at the owner of the shared behavior; do not hide duplication behind
-  another forwarding wrapper.
-
-### Methods and functions
-
-- Prefer instance methods for behavior owned by an object and using its collaborators or policy.
-- Do not use `@staticmethod`.
-- Use `@classmethod` only for a genuine alternative constructor, such as `APIServer.from_base()`.
-- Use a module-level function for pure behavior that belongs to no object.
-- Keep functions small enough that their name and control flow remain obvious, but do not split
-  linear logic into one-line forwarding functions.
-- Avoid boolean switches that make one method execute unrelated modes; use explicit operations when
-  behaviors are genuinely different.
-- An intentionally empty or default no-op method has a concise docstring explaining why no action
-  is required; the docstring is its complete body. An abstract method likewise uses its contract
-  docstring as the complete body. Do not use `pass` or write `return None` merely to make an empty
-  method explicit. Use a bare `return` only for meaningful early control-flow termination. An
-  explicit `return None` is allowed only when returning `None` is semantically significant in a
-  non-empty function or required by an external protocol.
-- Do not use `getattr()` as a substitute for a typed contract.
-- Do not implement dynamic endpoint access through `Client.__getattr__`.
-
-### Asynchronous code and lifecycle
-
-- All network APIs, lifecycle hooks, and resource-lifecycle operations remain asynchronous.
-  `Application.run()` remains the established synchronous loop-owning entry point.
-- Never call blocking I/O from asynchronous code.
-- Use async context managers and `AsyncExitStack` for deterministic multi-resource cleanup.
-- Never invoke context-manager protocol methods (`__enter__`, `__exit__`, `__aenter__`, or
-  `__aexit__`) directly. Use `with`, `async with`, `ExitStack`, or `AsyncExitStack`; use an exit
-  stack callback only for cleanup that is not itself a context manager. `ContextVar.set()` and
-  `ContextVar.reset(token)` remain valid operations owned by the focused current-client context.
-- Cleanup must be correct for normal completion, exceptions, and cancellation.
-- Do not catch `asyncio.CancelledError` except at an explicitly owned cancellation boundary, and
-  re-raise or consume it only according to that boundary's documented contract.
-- Do not catch broad exceptions around large execution blocks.
-- A broad catch is acceptable only around a caller-provided dynamic decoder or guaranteed cleanup
-  followed by immediate re-raise.
-- Do not silently retry network operations.
-- Do not create background tasks whose ownership and shutdown are undefined.
-- Lifecycle state protection must not serialize independent HTTP requests.
-
-### Pydantic and value objects
-
-- Use Pydantic v2 models for validated public request, response, and structured SDK contracts.
-- Public request fields use alias-free `snake_case`.
-- Reject unknown fields unless a concrete wire contract explicitly requires extensibility.
-- Do not use Pydantic private internals.
-- Use:
+- Python 3.14 or newer is required.
+- Every Python source file contains exactly one `from __future__ import annotations`, after the
+  module docstring and before ordinary imports or executable code.
+- Use PEP 695 type parameters and `type` aliases when modern syntax suffices; do not use
+  `Generic`/`TypeVar` for those cases.
+- Type every public function, method, property, context manager, and stored collaborator with the
+  narrowest truthful type.
+- Prefer `collections.abc`, `Self`, explicit imports, and `TYPE_CHECKING` for cycle-prone type-only
+  imports.
+- Do not spread `Any`, use `object` as an escape hatch, use `cast(Any, ...)`, inspect generic or
+  Pydantic internals, or hide architectural problems with `# type: ignore`.
+- Abstract classes use `import abc`, `abc.ABC`, and `abc.abstractmethod`.
+- Do not use wildcard imports, dependency-private imports, arbitrary dynamic imports,
+  `@staticmethod`, or `getattr()` as a substitute for a typed contract.
+- Ruff owns formatting, import order, and linting. Mypy strict mode owns static typing. The line
+  length and Python target come from `pyproject.toml`.
+- Pydantic v2 owns validation of public and external data. Reusable scalar invariants belong in a
+  named type under `pypokerlost/types/`; related fields belong in a focused model.
+- Preserve omitted fields versus explicit `None`. Standard method payload preparation uses:
 
   ```python
   model_dump(
@@ -335,80 +93,138 @@ A module and its main artifact must communicate their responsibility.
   )
   ```
 
-  for standard RPC payload preparation unless a concrete endpoint contract requires otherwise.
+## PokerlostType
 
-- Preserve the distinction between an omitted field and an explicitly supplied `None`.
-- Use frozen, slotted dataclasses for small immutable internal values that require no Pydantic
-  validation.
-- Do not declare a dataclass frozen while storing caller-owned mutable collections inside it.
-- Do not use untyped dictionaries as substitutes for stable internal contracts.
+- `PokerlostType` is the immutable base for typed API objects. It allows extra response fields for
+  forward compatibility and owns an optional private client binding.
+- `MutablePokerlostType` is the deliberate mutable subtype; do not weaken the base model or add
+  implicit-default or sentinel mechanics without a runtime requirement.
+- Client resolution is: explicit or validation-context binding, then the single task-local current
+  client in `client/current_client.py`, then `ClientContextError`.
+- The private client binding is never serialized. Response validation passes the executing client
+  through Pydantic context so nested typed API objects can resolve it.
 
-### Validation ownership
+## Methods and generated types
 
-- Pydantic v2 owns validation and normalization of all public or externally supplied data.
-- Do not spread imperative `_validate_*` methods across clients, sessions, storage, request
-  builders, OpenAPI values, methods, or lifecycle objects.
-- A reusable scalar invariant becomes a named semantic Pydantic-backed type under
-  `pypokerlost/types/`.
-- A group of related fields becomes a focused Pydantic model.
-- Validate named scalar types through a reusable `TypeAdapter` at the subsystem boundary.
-- Use `Annotated`, `StringConstraints`, `Field`, `BeforeValidator`, and `AfterValidator` inside the
-  semantic type module when necessary.
-- Custom validator functions belong beside the semantic type and are invoked by Pydantic; callers
-  do not call them directly.
-- Do not duplicate the same validation in constructors and public methods.
-- Do not use `type(value) is ...`, manual `isinstance(...)` chains, `.strip()` checks, regex checks,
-  range checks, finite-number checks, or enum membership checks in orchestration classes when the
-  constraint can be represented by Pydantic.
-- Do not use `pydantic.validate_call` indiscriminately on every method. Prefer named types and one
-  boundary adapter.
-- Do not use Pydantic to validate trusted internal control flow, dictionary lookups, lifecycle
-  state, or third-party runtime results already owned by another adapter.
-- After Pydantic validation, internal code may rely on the validated type and must not repeat
-  defensive checks.
-- Preserve an established public `TypeError` or `ValueError` contract by translating
-  `ValidationError` once at the subsystem boundary. Preserve only a safe failure category through
-  `__cause__`; never retain an input-bearing `ValidationError`, and never expose sensitive input in
-  translated messages or metadata.
+- A method declares request fields, `__api_method__`, `__http_method__`, and `__returning__` only.
+- Methods inherit `PokerlostType` but override its configuration to remain strict and
+  extra-forbid.
+- The operation string is the complete operation identity. Do not add service metadata, routing,
+  or an endpoint facade to methods or `Client`.
+- Generated request methods live under `pypokerlost/methods/<service_package>/`.
+- Generated returned and nested API objects and aliases live under
+  `pypokerlost/types/<service_package>/`. Never place generated response models beside methods.
+- Generated code imports only stable public runtime facades and never imports `scripts` or tooling
+  dependencies.
 
-### Errors and security
+## Client/request/response
 
-- Root SDK exceptions under the established `PokerlostError` hierarchy.
-- Distinguish application failures, protocol failures, decoding failures, transport failures,
-  timeout failures, context failures, and lifecycle-state failures only when code handles them
-  differently.
-- Do not create empty exception subclasses that merely mirror every HTTP status.
-- Preserve stable application error codes exactly.
-- Public exception messages, exception metadata, and logs must never expose raw response bodies,
-  request bodies, headers, cookies, authorization values, access tokens, refresh tokens,
-  credentials, private keys, or other secrets.
-- Preserve transport and decoder failure categories through safe sanitized `__cause__` values.
-  Never retain an external exception that owns a request, response body, headers, or other input.
-- Do not swallow programming errors.
+- `Client` owns exactly one `BaseSession`, one `BaseStorage`, and one mutable ordered middleware
+  list. `Client()` defaults to `HttpxSession` and `MemoryStorage`.
+- Client startup is storage then session. Shutdown is session then storage, and both close
+  operations must be attempted. A failed session startup closes already-started storage.
+- `RequestBuilder` produces a frozen `Request` containing only `method`, `http_method`, `data`, and
+  immutable headers. It owns no URL, JSON codec, bytes, or I/O.
+- `HttpxSession` owns `APIServer`, URL construction, strict JSON encoding, UTF-8 conversion, HTTPX
+  resources, concrete I/O, JSON decoding configuration, and `ResponseHandler`.
+- `Response[ResultT]` is the fixed extra-forbid envelope with `ok`, `result`, `error`, and
+  `error_message`.
+- `ResponseHandler` validates the envelope, maps SDK errors, and validates `__returning__` with the
+  executing method's client in validation context.
+- All network and resource lifecycle APIs remain asynchronous. `Application.run()` is the sole
+  synchronous event-loop-owning entry point.
+- Cleanup must remain correct for normal completion, exceptions, and cancellation. Do not serialize
+  independent requests with lifecycle state protection.
 
-### Comments and docstrings
+## Middleware
 
-- Comments explain why a non-obvious decision exists, not what the next line already says.
-- Do not add comments that restate type annotations or simple control flow.
-- Public classes and non-obvious public operations receive concise docstrings.
-- Private helpers need docstrings only when their contract or invariant is not clear from naming
-  and types.
-- Keep examples consistent with the current public API.
-- Do not leave TODO placeholders for architecture already decided elsewhere.
-- Do not preserve dead historical explanations after replacing an implementation.
+- `BaseMiddleware` is the single method-call middleware contract. Middleware wraps only
+  `Client.make_request()` execution, never lifecycle or transport internals.
+- `Client` copies constructor input; `add_middleware()` appends. Each request takes an immutable
+  tuple snapshot, and the first configured component is outermost.
+- `MiddlewareHandler` remains polymorphic over each method it receives, allowing an alternate method
+  through the remaining chain.
+- `RequestOptions` is the only typed per-request transport extension. It owns immutable ordered
+  string headers; omitted next-handler options inherit, supplied options replace.
+- Do not add built-in authorization, retry, credential, or replay middleware.
 
-### Change discipline
+## Storage
 
-Before adding code:
+- `BaseStorage` centrally validates `StorageKey`, `JSONValue`, and `StorageTTL`, and makes defensive
+  copies on `set()` and `get()`.
+- `StorageTTL` accepts `int | float | timedelta | None`; booleans and non-positive or non-finite
+  values are invalid. Backends receive normalized relative `float | None`.
+- Missing and expired keys raise `StorageKeyNotFoundError`; top-level `None` remains a valid value.
+- `MemoryStorage` uses monotonic time and opportunistic expiration. Reads do not extend TTL;
+  replacing a key replaces its expiration.
+- `MemoryStorage.close()` is idempotent, retains values, and does not pause TTL. Only `clear()`
+  deliberately removes all values.
+- Do not add global storage, storage context, automatic method persistence, predefined keys,
+  default or sliding TTL, cleanup tasks, transactions, queues, pub/sub, or an external backend
+  without a direct requirement.
 
-1. inspect the current implementation and all call sites;
-2. search for an existing artifact with the same responsibility;
-3. identify the actual owner of the behavior;
-4. make the smallest coherent change;
-5. delete obsolete paths in the same task;
-6. update focused facades and authoritative documentation;
-7. run formatting, linting, typing, import, build, and diff checks.
+## Generator
 
-Use `uv` for locking and builds. Make only task-related changes; do not perform unrelated
-refactoring or formatting. Never run destructive Git commands, and do not commit or push unless the
-latest direct user requirement explicitly requests it.
+- `scripts/generate_methods.py` is the single authoritative generator. Its `file` and `service`
+  commands share validation, resolution, rendering, manifest policy, and writing.
+- Local JSON and generated text I/O use `aiofiles` async context managers. Service discovery uses a
+  directly scoped `httpx.AsyncClient`, not runtime SDK infrastructure.
+- The generator accepts OpenAPI 3.1 JSON only. Do not add YAML or another CLI framework.
+- Typer and aiofiles remain tooling dependencies, never runtime dependencies.
+- `--output` identifies one SDK package root containing both `methods/` and `types/`.
+- Manifest v2 records generator/OpenAPI versions, canonical source hash, service identity/package,
+  and normalized owned paths in both namespaces. Only proven generator-owned files may be removed.
+- Manual files are not overwritten without explicit `--force`; legacy layout migration also
+  requires deliberate `--force` and proven ownership.
+- Canonical contract changes require an `info.version` precedence increase unless `--force` is
+  supplied.
+- Generator and contract versions use `MAJOR.MINOR.PATCH`. A generator major version covers an
+  incompatible generated layout, public API, manifest format, or CLI change.
+- Do not move generator models, naming, rendering, hashing, manifest, or overwrite policy into the
+  runtime package.
+
+## Errors/security
+
+- Root expected SDK failures under the established `PokerlostError` hierarchy.
+- Distinguish application, protocol, decoding, transport, timeout, context, lifecycle, and storage
+  failures only where callers handle them differently.
+- Preserve stable API error codes exactly. Do not add empty status-specific exception subclasses.
+- Public exceptions, causes, messages, metadata, comments, examples, and logs must never expose raw
+  request or response bodies, headers, cookies, credentials, tokens, or private keys.
+- Translate validation failures once at subsystem boundaries and retain only sanitized causes.
+- Do not swallow programming errors or catch broad exceptions around large execution blocks.
+
+## Documentation
+
+- Update documentation in the same task when behavior, public imports, commands, versions, or
+  architecture ownership changes.
+- `README.md` is the concise entry point; `SERVICE.md` owns product boundaries; `AGENTS.md` owns
+  normative engineering rules; `docs/index.md` owns navigation.
+- Architecture pages explain internals, API pages guide public usage, generator pages own generation
+  contracts/workflows, development pages own maintainer workflows, and project pages record current
+  status and non-goals.
+- Do not duplicate a source of truth. Link to the owning page.
+- Documentation is English, uses relative internal links, current public imports, one H1 per file,
+  and language-tagged code fences.
+- Pages under `docs/` use lowercase kebab-case names. Root normative files retain canonical names.
+
+## Tooling
+
+- Use `uv` for locking, dependency synchronization, and builds.
+- Use `make pre-commit`, `make check`, and `make check-full` as the canonical repository gates.
+- Use only real commands and Make targets declared by the repository.
+- Before handoff, run the applicable lock, sync, Ruff, mypy, compile, build, documentation-link, and
+  `git diff --check` validations. Report every unavailable or failed check accurately.
+- Review the complete final diff before any requested commit. Never push unless explicitly asked.
+
+## Do not
+
+- Do not perform unrelated refactoring, renaming, formatting, dependency changes, or public API
+  changes.
+- Do not add concrete service methods, authentication/token behavior, authorization policy,
+  service routing, retries, streaming, WebSocket/events, direct database access, dynamic endpoint
+  lookup, runtime OpenAPI generation, settings systems, or compatibility layers without a direct
+  requirement.
+- Do not add tests, CI/CD, Docker Compose, runtime containers, Helm, code generation, or publishing
+  automation unless the latest direct requirement asks for them.
+- Do not use destructive Git commands, commit, push, or alter branches unless explicitly requested.

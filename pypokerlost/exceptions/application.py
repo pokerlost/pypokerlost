@@ -1,3 +1,5 @@
+"""Application lifecycle exceptions."""
+
 from __future__ import annotations
 
 from pypokerlost.exceptions.base import PokerlostError

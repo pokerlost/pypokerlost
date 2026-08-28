@@ -1,3 +1,5 @@
+"""Application lifecycle orchestration for the PokerLost SDK."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from types import TracebackType
 
-from pypokerlost.client import Client
+from pypokerlost.client.client import Client
 from pypokerlost.exceptions import ApplicationStateError
 from pypokerlost.lifecycle import ApplicationLifecycle, default_application_lifecycle
 from pypokerlost.lifecycle.signal_controller import SignalController

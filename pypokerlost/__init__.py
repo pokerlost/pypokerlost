@@ -1,11 +1,14 @@
+"""Public package facade for the PokerLost SDK."""
+
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 
+from pypokerlost import exceptions
 from pypokerlost.application import Application
-from pypokerlost.client import Client
-from pypokerlost.contracts import ApplicationResponse, ResponseModel
+from pypokerlost.client.client import Client
+from pypokerlost.client.response import Response
 from pypokerlost.exceptions import (
     ApplicationStateError,
     ClientConnectionError,
@@ -19,6 +22,9 @@ from pypokerlost.exceptions import (
     PokerlostProtocolError,
 )
 from pypokerlost.methods import PokerlostMethod
+from pypokerlost.types import MutablePokerlostType, PokerlostType
+
+from .openapi_extra import OpenAPIExtra
 
 try:
     __version__ = _distribution_version("pypokerlost")
@@ -27,7 +33,6 @@ except PackageNotFoundError:
 
 __all__ = (
     "Application",
-    "ApplicationResponse",
     "ApplicationStateError",
     "Client",
     "ClientConnectionError",
@@ -36,10 +41,14 @@ __all__ = (
     "ClientError",
     "ClientStateError",
     "ClientTimeoutError",
+    "MutablePokerlostType",
+    "OpenAPIExtra",
     "PokerlostAPIError",
     "PokerlostError",
     "PokerlostMethod",
     "PokerlostProtocolError",
-    "ResponseModel",
+    "PokerlostType",
+    "Response",
     "__version__",
+    "exceptions",
 )
