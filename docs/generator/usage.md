@@ -16,14 +16,14 @@ a runtime console script.
 
 ## Version
 
-The current generator version is `1.0.0`:
+The current generator version is `1.1.0`:
 
 ```bash
 uv run python scripts/generate_methods.py --version
 ```
 
 ```text
-1.0.0
+1.1.0
 ```
 
 Use `-h` or `--help` globally or after a command for Typer help.
@@ -41,7 +41,9 @@ Its options are:
 - `--output DIRECTORY` or `-o DIRECTORY`: SDK package root; default `pypokerlost`;
 - `--check`: compare generated state without writing; default off;
 - `--force`: permit an intentional conflicting-target overwrite and bypass version policy; default
-  off.
+  off;
+- `--openapi-operation OPERATION`: operation to exclude as the publication system route; default
+  `openapi.get`.
 
 To select an explicit SDK root:
 
@@ -51,11 +53,13 @@ uv run python scripts/generate_methods.py file path/to/openapi.json \
 ```
 
 `--output` must identify the package root that will contain both `methods/` and `types/`. Do not pass
-the `methods/` directory itself.
+the `methods/` directory itself. File mode never fetches the selected publication operation. Pass a
+non-default selector when a saved service contract publishes OpenAPI under a custom operation and
+must generate the same output as service mode.
 
 ## Generate from a service
 
-The `service` command accepts a required HTTP or HTTPS service base URL and fetches
+The `service` command accepts a required HTTP or HTTPS service base URL. By default it fetches
 `GET /openapi.get`:
 
 ```bash
@@ -65,6 +69,8 @@ uv run python scripts/generate_methods.py service http://127.0.0.1:8000
 It supports the same `--output`, `--check`, and `--force` options, plus:
 
 - `--timeout FLOAT`: positive OpenAPI request timeout in seconds; default `10.0`.
+- `--openapi-operation OPERATION`: publication operation validated as `APIOperation`; default
+  `openapi.get`.
 
 The base URL may include a path prefix, but it must not contain user information, a query, or a
 fragment. Supply authentication through the service environment instead of embedding credentials
@@ -75,12 +81,15 @@ For example:
 ```bash
 uv run python scripts/generate_methods.py service http://127.0.0.1:8000 \
   --output pypokerlost \
+  --openapi-operation contract.getOpenAPI \
   --timeout 15
 ```
 
-The endpoint must return the document inside the fixed PokerLost response envelope. Service mode
-uses a directly scoped development-time HTTP client; it does not use the runtime SDK `Client` or
-its middleware, session, or storage.
+This command fetches `GET /contract.getOpenAPI`. The selected operation must have exactly the
+`namespace.someOperation` shape; `accounts.get_self`, `accounts.self.get`, and uppercase initials
+are rejected before any request. The endpoint must return the document inside the fixed PokerLost
+response envelope. Service mode uses a directly scoped development-time HTTP client; it does not
+use the runtime SDK `Client` or its middleware, session, or storage.
 
 ## Verify committed output
 
@@ -115,7 +124,7 @@ uv run python scripts/generate_methods.py file path/to/openapi.json \
 
 Without `--force`, an OpenAPI version downgrade is rejected. A changed canonical contract hash also
 requires an `info.version` precedence increase. The full ownership and update rules are documented
-in [Generated layout and ownership](generated-layout.md).
+in `docs/generator/generated-layout.md`.
 
 ## Contract failures
 
@@ -125,6 +134,6 @@ message and exit with status `1`. Typer retains its standard behavior for comman
 errors. No output is written until contract generation, prior ownership resolution, and version
 policy have succeeded.
 
-See [Supported generator contract](contract.md) for accepted operations and schemas.
+See `docs/generator/contract.md` for accepted operations and schemas.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

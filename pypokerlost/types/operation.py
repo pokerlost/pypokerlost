@@ -11,6 +11,6 @@ type APIOperation = Annotated[
     str,
     StringConstraints(
         strict=True,
-        pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$",
+        pattern=r"^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$",
     ),
 ]

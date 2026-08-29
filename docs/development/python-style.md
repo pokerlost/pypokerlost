@@ -36,7 +36,7 @@ Pydantic v2 owns validation and normalization of public or externally supplied d
 invariants belong in named semantic types; related fields belong in focused models. Method payloads
 preserve omitted values versus explicit `None` and use JSON-mode model dumping.
 
-The complete normative rules are in the repository [engineering guidance](../../AGENTS.md). Run
-the commands in [Development commands](commands.md) before handoff.
+The complete normative rules are in `AGENTS.md`. Run the commands in
+`docs/development/commands.md` before handoff.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

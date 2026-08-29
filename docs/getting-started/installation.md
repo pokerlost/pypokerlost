@@ -43,7 +43,6 @@ build/wheel-check/bin/python -c "import pypokerlost; print(pypokerlost.__version
 ```
 
 `uv build` creates both a wheel and a source distribution under `dist/`. See
-[Building distributions](../development/building.md) for artifact inspection and the Docker
-artifact workflow.
+`docs/development/building.md` for artifact inspection and the Docker artifact workflow.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

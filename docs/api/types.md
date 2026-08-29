@@ -64,7 +64,7 @@ from pypokerlost.types import (
 |---|---|
 | `APIBase` | Strict HTTP(S) URL string without user information, a query, or a fragment; normalized without a trailing slash. |
 | `HTTPMethod` | `"GET"`, `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"`. |
-| `APIOperation` | Lowercase dotted identifier such as `accounts.get`; at least two segments. |
+| `APIOperation` | Exactly `namespace.someOperation`: two ASCII alphanumeric segments with lowercase initials and exactly one dot. |
 | `JSONDumps` | Callable JSON encoder returning `str`. |
 | `JSONLoads` | Callable dynamic JSON decoder. |
 | `JSONScalar` | Boolean, integer, finite float, string, or `None`. |
@@ -82,9 +82,9 @@ Python objects. This keeps request normalization and storage behavior within the
 contract.
 
 `StorageTTL` rejects booleans even though `bool` is an `int` subclass in Python. Zero, negative,
-infinite, and NaN lifetimes are invalid. See [storage](storage.md) for boundary exception behavior.
+infinite, and NaN lifetimes are invalid. See `docs/api/storage.md` for boundary exception behavior.
 
-See [types and methods](../architecture/types-and-methods.md) for generated placement and validation
-context propagation.
+See `docs/architecture/types-and-methods.md` for generated placement and validation context
+propagation.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

@@ -37,16 +37,24 @@ OpenAPI 3.1 base dialect.
 A generated `operationId` must match the runtime `APIOperation` contract:
 
 ```text
-^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$
+^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$
 ```
 
-The path must equal `/` followed by that complete operation ID. The supported HTTP methods are
-`GET`, `POST`, `PUT`, `PATCH`, and `DELETE`. Duplicate operation IDs and generated Python naming
-collisions are errors.
+The identifier has exactly two segments and one dot. Both segments begin with a lowercase ASCII
+letter and otherwise contain only ASCII letters or digits. Ordinary lowerCamelCase is supported;
+underscores, hyphens, extra dots, missing dots, and uppercase initials are rejected.
 
-Path-level and operation-level OpenAPI parameters are not supported. The system paths `/` and
-`/openapi.get` are excluded from generation, and operations marked `deprecated: true` are skipped.
-At least one non-system, non-deprecated API operation must remain.
+Every non-root operation path must equal `/` followed by that complete operation ID. The root path
+`/` is the sole path exception, but its operation ID must still satisfy `APIOperation`. The supported
+HTTP methods are `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`. Duplicate operation IDs and generated
+Python naming collisions are errors.
+
+Path-level and operation-level OpenAPI parameters are not supported. All operation IDs and paths
+are validated before the system path `/` and active OpenAPI publication path are excluded from
+method generation. Both modes use the validated `--openapi-operation` selector, which defaults to
+`openapi.get`; service mode also uses it to build the fetch path, while file mode performs no fetch.
+Operations marked `deprecated: true` are skipped. At least one non-system, non-deprecated API
+operation must remain.
 
 ## Request bodies
 
@@ -127,7 +135,7 @@ must identify declared properties.
 
 The service ID is converted to `snake_case` for its package. Generation fails if the result is not a
 valid Python package name or collides with a reserved core package; see
-[Generated layout and ownership](generated-layout.md).
+`docs/generator/generated-layout.md`.
 
 ## References and reachability
 
@@ -152,7 +160,7 @@ Recognized descriptive metadata does not affect generated code. Extension fields
 forbid siblings other than `description`. Security metadata may be present where OpenAPI permits
 it, but the generator does not interpret it or emit authorization policy.
 
-See [Command-line usage](usage.md) to run the generator and
-[Generator architecture](../architecture/generator.md) for the processing model.
+See `docs/generator/usage.md` to run the generator and `docs/architecture/generator.md` for the
+processing model.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

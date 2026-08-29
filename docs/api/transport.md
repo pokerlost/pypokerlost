@@ -11,8 +11,8 @@ from pypokerlost.client.response import BaseResponseHandler, Response, ResponseH
 from pypokerlost.client.session import DEFAULT_TIMEOUT, BaseSession, HttpxSession
 ```
 
-`Response` is also re-exported from the package root. `APIServer` has its own focused module and is
-documented in the [API server guide](api-server.md).
+`Response` is also re-exported from the package root. `APIServer` has its own focused module,
+documented in `docs/api/api-server.md`.
 
 ## Request
 
@@ -81,7 +81,7 @@ Extra fields are rejected.
 handler.handle(
     *,
     method=method,
-    operation="accounts.get",
+    operation="accounts.getSelf",
     status_code=200,
     content=response_text,
 )
@@ -125,7 +125,6 @@ encodes UTF-8 bytes, performs HTTP I/O, and invokes `ResponseHandler`. `close()`
 session's HTTPX resource; client owners normally call `Client.stop()` or leave the client async
 context instead of closing the session directly.
 
-See the [request and response pipeline](../architecture/request-response-pipeline.md) for execution
-order and exact error mapping.
+See `docs/architecture/request-response-pipeline.md` for execution order and exact error mapping.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

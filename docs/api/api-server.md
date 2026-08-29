@@ -16,8 +16,8 @@ The usual constructor is `from_base()`:
 ```python
 api_server = APIServer.from_base("https://pokerlost.example/api")
 
-url = api_server.api_url("accounts.get")
-assert url == "https://pokerlost.example/api/accounts.get"
+url = api_server.api_url("accounts.getSelf")
+assert url == "https://pokerlost.example/api/accounts.getSelf"
 ```
 
 `from_base()` accepts a strict HTTP(S) string, rejects user information, a query, or a fragment,
@@ -65,7 +65,7 @@ client = Client(session=session)
 ```
 
 `APIServer` owns URL targeting only. It performs no network I/O, service discovery, routing,
-authorization, or retry behavior. See [transport objects](transport.md) for `HttpxSession` and the
-[pipeline architecture](../architecture/request-response-pipeline.md) for URL ownership.
+authorization, or retry behavior. See `docs/api/transport.md` for `HttpxSession` and
+`docs/architecture/request-response-pipeline.md` for URL ownership.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

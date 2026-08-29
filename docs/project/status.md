@@ -16,7 +16,7 @@ development-time generation tooling shared by PokerLost service consumers.
 | Generated layout split | Implemented | Requests live under `pypokerlost.methods`; returned and nested API objects live under `pypokerlost.types`. |
 | Concrete service packages | Not shipped here | Services generate or maintain their own method and type packages. |
 
-The current SDK package version is `0.2.0`; the current generator version is `1.0.0`.
+The current SDK package version is `0.2.0`; the current generator version is `1.1.0`.
 
 ## Not implemented in the core
 
@@ -29,7 +29,7 @@ The repository provides static analysis and artifact-build tooling but currently
 suite, CI workflow, or package publishing automation. These statements describe repository state,
 not a speculative roadmap.
 
-See [Project non-goals](non-goals.md) for the intentional boundary and
-[`SERVICE.md`](../../SERVICE.md) for the product definition.
+See `docs/project/non-goals.md` for the intentional boundary and `SERVICE.md` for the product
+definition.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

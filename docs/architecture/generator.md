@@ -8,10 +8,10 @@ method and type packages without participating in SDK runtime execution.
 Both contract sources converge immediately on the same pipeline:
 
 ```text
-raw OpenAPI JSON file ─┐
-                      ├─> OpenAPIDocument
-service /openapi.get ─┘          │
-                                ▼
+raw OpenAPI JSON file ─────────┐
+                              ├─> OpenAPIDocument
+service /<openapi-operation> ──┘          │
+                                         ▼
                      canonical source hash
                                 │
                                 ▼
@@ -30,8 +30,11 @@ service /openapi.get ─┘          │
                     manifest and safe writer
 ```
 
-File mode parses a raw JSON document. Service mode fetches `/openapi.get` with a directly scoped
-`httpx.AsyncClient` and validates the returned `Response[OpenAPIDocument]`. Acquisition is the only
+File mode parses a raw JSON document. Service mode validates `--openapi-operation` as an
+`APIOperation`, defaults it to `openapi.get`, and fetches `/<openapi-operation>` with a directly
+scoped `httpx.AsyncClient`. It then validates the returned `Response[OpenAPIDocument]`. File mode
+accepts the same optional value only as the exact system-route selector, allowing a captured custom
+publication contract to generate identically without performing a fetch. Acquisition is the only
 difference between the modes; contract resolution, rendering, ownership, and writing are shared.
 
 ## Validation phases
@@ -42,8 +45,8 @@ JSON values until a selected operation makes them reachable.
 
 This delayed boundary prevents unused framework-owned components and non-success responses from
 blocking generation. Once reachable, a node is validated against the supported subset and failures
-identify its component or operation location. The complete supported subset is defined in the
-[generator contract](../generator/contract.md).
+identify its component or operation location. The complete supported subset is defined in
+`docs/generator/contract.md`.
 
 ## Reference resolution
 
@@ -79,7 +82,7 @@ from previous manifest ownership.
 Writes use temporary files followed by atomic replacement. Stale source is removed only when the
 previous manifest proves ownership and the file still carries the generator header. Details of the
 layout, manual-file protection, and migration policy are in
-[Generated layout and ownership](../generator/generated-layout.md).
+`docs/generator/generated-layout.md`.
 
 ## Runtime boundary
 
@@ -91,4 +94,4 @@ builders, or response handlers.
 Generated modules depend only on the runtime package and declared runtime dependencies. They never
 import generator models, Typer, aiofiles, or private SDK implementation names.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

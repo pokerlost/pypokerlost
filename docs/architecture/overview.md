@@ -83,8 +83,7 @@ OpenAPI 3.1
 One generation run writes request methods and transport-free API types under separate service
 packages. The generator validates the supported contract, renders deterministic Python sources,
 and uses its manifest to protect manual files and remove only proven stale generated files. See
-[generator architecture](generator.md) for ownership details and
-[generator usage](../generator/usage.md) for commands.
+`docs/architecture/generator.md` for ownership details and `docs/generator/usage.md` for commands.
 
 ## Dependency direction
 
@@ -105,12 +104,12 @@ targeting, or OpenAPI metadata.
 
 ## Detailed explanations
 
-- [Client lifecycle](client-lifecycle.md) covers resource order, task-local context, and
+- `docs/architecture/client-lifecycle.md` covers resource order, task-local context, and
   `Application`.
-- [Request and response pipeline](request-response-pipeline.md) covers payload preparation,
+- `docs/architecture/request-response-pipeline.md` covers payload preparation,
   transport, validation, and error mapping.
-- [Types and methods](types-and-methods.md) covers model behavior, client binding, and generated
+- `docs/architecture/types-and-methods.md` covers model behavior, client binding, and generated
   placement.
-- [Public API guides](../api/client.md) cover supported imports and usage.
+- `docs/api/client.md` covers supported imports and usage.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

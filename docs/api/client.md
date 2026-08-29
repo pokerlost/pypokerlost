@@ -116,7 +116,7 @@ async def use_storage(client: Client) -> None:
     value = await client.storage.get("example")
 ```
 
-See [middleware](middleware.md) and [storage](storage.md) for their complete public contracts.
+See `docs/api/middleware.md` and `docs/api/storage.md` for their complete public contracts.
 
 ## Application integration
 
@@ -133,7 +133,7 @@ Application(Client()).run(main)
 ```
 
 `run()` owns a new event loop and supported process-signal handling. Use `await run_async(...)`
-when the caller owns the running event loop. See [client lifecycle](../architecture/client-lifecycle.md)
-for ordering and cancellation behavior.
+when the caller owns the running event loop. See `docs/architecture/client-lifecycle.md` for
+ordering and cancellation behavior.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

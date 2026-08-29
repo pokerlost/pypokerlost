@@ -37,7 +37,7 @@ reserved set is:
 api_base
 base
 json
-rpc
+operation
 storage_key
 storage_ttl
 ```
@@ -110,7 +110,7 @@ Without `--force`, OpenAPI `info.version` cannot decrease relative to the stored
 canonical source hash changes, version precedence must increase. A version increase with unchanged
 content is allowed, as is unchanged content at the same version.
 
-The current generator version is `1.0.0`. Generator versioning follows SemVer: `MAJOR` covers an
+The current generator version is `1.1.0`. Generator versioning follows SemVer: `MAJOR` covers an
 incompatible generated layout, generated public API, manifest format, or CLI change; `MINOR` covers
 backward-compatible OpenAPI or optional CLI capability; `PATCH` covers fixes that preserve those
 contracts.
@@ -126,7 +126,7 @@ sources and scoped manifest, and then removes obsolete manifest state. Generated
 only when prior ownership and the generator header both prove that deletion is safe. Unowned stale
 source is never inferred to be disposable.
 
-See [Command-line usage](usage.md) for invocation details and
-[Supported generator contract](contract.md) for accepted input.
+See `docs/generator/usage.md` for invocation details and `docs/generator/contract.md` for accepted
+input.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

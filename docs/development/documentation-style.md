@@ -16,7 +16,7 @@ each subject.
 - `docs/project/` records current state and non-goals.
 
 Do not copy a long rule or procedure between owners. Keep the authoritative explanation in one
-place and link to it from related pages.
+place and reference its repository-root path from related pages.
 
 ## Page structure
 
@@ -25,14 +25,16 @@ headings in logical order, and use tables only when a real comparison or matrix 
 prose. Public guide filenames use lowercase kebab-case.
 
 Every fenced block declares its language, such as `python`, `bash`, `toml`, `json`, or `text`.
-Leaf pages end with a relative link to the documentation index.
+Leaf pages end by referring to `docs/index.md`.
 
 ## Links and paths
 
-Use relative links for repository documentation and verify that every target exists. Documentation
-must not contain workstation-specific absolute paths. When a page is replaced before stable public
-documentation URLs exist, remove the obsolete page after migrating its unique content rather than
-keeping a redirect stub.
+Do not use Markdown links between repository files. Refer to an internal file by its repository-root
+path in inline code, such as `docs/architecture/overview.md` or `SERVICE.md`. HTTP(S) links,
+`mailto:` links, and same-document `#anchor` links remain allowed. Documentation must not contain
+workstation-specific absolute paths. The repository-local checker enforces these rules. When a page
+is replaced before stable public documentation URLs exist, remove the obsolete page after migrating
+its unique content rather than keeping a redirect stub.
 
 ## Examples
 
@@ -44,4 +46,4 @@ Do not include credentials, tokens, private repository URLs, raw request or resp
 unimplemented authentication, retry, streaming, or WebSocket APIs. Update examples when a public
 import, command, minimum Python version, or behavior changes.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

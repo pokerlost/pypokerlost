@@ -24,7 +24,7 @@ retains the same API-object validation and client-binding behavior.
 methods declare only:
 
 - request fields;
-- `__api_method__`, the full lowercase dotted API operation;
+- `__api_method__`, the exact two-segment `namespace.someOperation` API operation;
 - `__http_method__`, which defaults to `"POST"`;
 - `__returning__`, the declared result type.
 
@@ -43,13 +43,13 @@ class AccountResult(PokerlostType):
 
 
 class GetAccountMethod(PokerlostMethod[AccountResult]):
-    __api_method__ = "accounts.get"
+    __api_method__ = "support.getAccount"
     __returning__ = AccountResult
 
     account_id: int
 ```
 
-See the [methods API guide](../api/methods.md) for invocation forms.
+See `docs/api/methods.md` for invocation forms.
 
 ## Generated placement
 
@@ -84,7 +84,7 @@ the task-local current client. Without either, it raises `ClientContextError`.
 Pydantic propagates that context through nested typed models, allowing returned `PokerlostType`
 objects to resolve the same client without serializing it.
 
-See the [types API guide](../api/types.md) for public semantic aliases and
-[client lifecycle](client-lifecycle.md) for task-local context ownership.
+See `docs/api/types.md` for public semantic aliases and `docs/architecture/client-lifecycle.md` for
+task-local context ownership.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

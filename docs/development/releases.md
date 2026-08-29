@@ -7,7 +7,7 @@ different public contracts.
 
 ```text
 SDK package: 0.2.0
-Generator:   1.0.0
+Generator:   1.1.0
 ```
 
 The SDK version is declared in `pyproject.toml` and locked with the project environment. The
@@ -40,9 +40,9 @@ increment. Backward-compatible OpenAPI support or an optional CLI capability is 
 or internal refactor preserving those contracts is `PATCH`.
 
 Service OpenAPI `info.version` values also use `MAJOR.MINOR.PATCH`. A canonical contract content
-change must increase version precedence unless generation is deliberately forced. The
-[generator contract](../generator/contract.md) and
-[generated layout](../generator/generated-layout.md) own the detailed generation rules.
+change must increase version precedence unless generation is deliberately forced.
+`docs/generator/contract.md` and `docs/generator/generated-layout.md` own the detailed generation
+rules.
 
 ## Release boundary
 
@@ -51,6 +51,6 @@ target. It does not define package publishing automation, release deployment, or
 container. Maintainers review version changes and built artifacts outside an automated repository
 release workflow.
 
-See [Building distributions](building.md) for artifact verification.
+See `docs/development/building.md` for artifact verification.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

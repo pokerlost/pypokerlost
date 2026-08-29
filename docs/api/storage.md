@@ -90,7 +90,7 @@ Storage is not a request cache, authorization store, global context, or transpor
 SDK provides no external backend, predefined keys, sliding TTL, expiration worker, transactions,
 queues, or pub/sub behavior.
 
-See [client lifecycle](../architecture/client-lifecycle.md) for resource ordering and
-[types](types.md) for the underlying semantic aliases.
+See `docs/architecture/client-lifecycle.md` for resource ordering and `docs/api/types.md` for the
+underlying semantic aliases.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

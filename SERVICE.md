@@ -26,6 +26,8 @@ calls while keeping service business rules outside the SDK.
 - Generated returned and nested API objects live under `pypokerlost.types.<service_package>`.
 - Transport request, response, session, and API-target mechanics live under `pypokerlost.client`.
 - The operation string is the full operation identity; the SDK does not route by service metadata.
+- Every operation string has exactly the `namespace.someOperation` shape: one dot, lowercase ASCII
+  initials, and ASCII letters or digits in both segments.
 - The fixed response envelope contains `ok`, `result`, `error`, and `error_message`.
 - A client owns one session, one storage backend, and its ordered middleware configuration.
 

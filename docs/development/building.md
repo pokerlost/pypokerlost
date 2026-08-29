@@ -59,6 +59,6 @@ docker buildx build \
   .
 ```
 
-See [Development commands](commands.md) for the complete static verification sequence.
+See `docs/development/commands.md` for the complete static verification sequence.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

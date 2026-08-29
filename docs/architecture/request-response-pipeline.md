@@ -103,7 +103,7 @@ method.
 Raw request bodies, raw response bodies, headers, cookies, and external exceptions containing
 transport input are not attached to public SDK failures.
 
-See [transport objects](../api/transport.md) for public imports and constructors and
-[middleware](../api/middleware.md) for request-option propagation.
+See `docs/api/transport.md` for public imports and constructors and `docs/api/middleware.md` for
+request-option propagation.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

@@ -24,7 +24,7 @@ class ExampleResult(PokerlostType):
 
 
 class ExampleMethod(PokerlostMethod[ExampleResult]):
-    __api_method__ = "example.echo"
+    __api_method__ = "echo.sendMessage"
     __returning__ = ExampleResult
 
     message: str
@@ -43,8 +43,8 @@ asyncio.run(main())
 ```
 
 `APIServer.from_base()` appends the API operation to the base URL, so this example sends the
-request to `http://127.0.0.1:8000/example.echo`. The endpoint must return the fixed PokerLost JSON
-envelope, and the successful `result` must match `ExampleResult`.
+request to `http://127.0.0.1:8000/echo.sendMessage`. The endpoint must return the fixed PokerLost
+JSON envelope, and the successful `result` must match `ExampleResult`.
 
 ## Generated service packages
 
@@ -56,8 +56,7 @@ pypokerlost/methods/<service_package>/  request method classes
 pypokerlost/types/<service_package>/    returned and nested API object types
 ```
 
-The [generator usage guide](../generator/usage.md) describes contract acquisition and commands.
-The [methods API guide](../api/methods.md) covers explicit binding and implicit current-client
-execution.
+`docs/generator/usage.md` describes contract acquisition and commands. `docs/api/methods.md` covers
+explicit binding and implicit current-client execution.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

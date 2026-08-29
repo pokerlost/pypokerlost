@@ -125,7 +125,7 @@ application = Application(Client(), lifecycle=lifecycle)
 application.run(main)
 ```
 
-See the [Client API guide](../api/client.md) for callable signatures and
-[storage API guide](../api/storage.md) for storage-specific persistence semantics.
+See `docs/api/client.md` for callable signatures and `docs/api/storage.md` for storage-specific
+persistence semantics.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

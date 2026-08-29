@@ -41,7 +41,7 @@ The exact default value is:
 The class emits no security requirement, authorization scheme, scopes, credentials, or token
 metadata. Those policies belong to consuming services and are not interpreted by the SDK.
 
-For generator contract metadata, see the [supported contract](../generator/contract.md). For the
-runtime boundary, see the [architecture overview](../architecture/overview.md).
+For generator contract metadata, see `docs/generator/contract.md`. For the runtime boundary, see
+`docs/architecture/overview.md`.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

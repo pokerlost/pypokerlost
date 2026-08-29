@@ -109,7 +109,7 @@ return await handler(
 ```
 
 The final `RequestBuilder` adds default JSON headers unless request options replace their names
-case-insensitively. See [transport objects](transport.md) for the `RequestOptions` model and
-[pipeline architecture](../architecture/request-response-pipeline.md) for its transport boundary.
+case-insensitively. See `docs/api/transport.md` for the `RequestOptions` model and
+`docs/architecture/request-response-pipeline.md` for its transport boundary.
 
-[Documentation index](../index.md)
+See `docs/index.md`.

@@ -64,7 +64,7 @@ class RequestBuilder:
         except AttributeError, ValidationError:
             pass
         raise TypeError(
-            "Concrete methods must declare a lowercase namespace.method __api_method__",
+            "Concrete methods must declare __api_method__ as namespace.someOperation",
         ) from TypeError("API operation validation failed")
 
     def _parse_http_method[ResultT](

@@ -17,7 +17,7 @@ uv sync --locked --all-groups
 ```
 
 Build an installable wheel and source distribution with `uv build`. See
-[Installation](docs/getting-started/installation.md) for the supported source and local-wheel flows.
+`docs/getting-started/installation.md` for the supported source and local-wheel flows.
 
 ## Quick example
 
@@ -46,16 +46,16 @@ Generated request methods are imported from `pypokerlost.methods.<service_packag
 and nested API objects are imported from `pypokerlost.types.<service_package>`.
 
 The runtime keeps typed methods, transport requests, response validation, and generated API
-objects in separate layers. See the [architecture overview](docs/architecture/overview.md).
+objects in separate layers. See `docs/architecture/overview.md`.
 
 ## Documentation
 
-- [Documentation index](docs/index.md)
-- [Getting started](docs/getting-started/quickstart.md)
-- [Architecture](docs/architecture/overview.md)
-- [Public API](docs/api/client.md)
-- [Generator](docs/generator/usage.md)
-- [Development](docs/development/commands.md)
+- `docs/index.md`
+- `docs/getting-started/quickstart.md`
+- `docs/architecture/overview.md`
+- `docs/api/client.md`
+- `docs/generator/usage.md`
+- `docs/development/commands.md`
 
 ## Development
 

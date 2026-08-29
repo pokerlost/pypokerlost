@@ -107,6 +107,8 @@ latest direct user requirement
 ## Methods and generated types
 
 - A method declares request fields, `__api_method__`, `__http_method__`, and `__returning__` only.
+- `__api_method__` uses exactly `namespace.someOperation`: exactly one dot, both segments begin
+  with a lowercase ASCII letter, and the remaining characters are ASCII letters or digits.
 - Methods inherit `PokerlostType` but override its configuration to remain strict and
   extra-forbid.
 - The operation string is the complete operation identity. Do not add service metadata, routing,
@@ -170,6 +172,9 @@ latest direct user requirement
 - Local JSON and generated text I/O use `aiofiles` async context managers. Service discovery uses a
   directly scoped `httpx.AsyncClient`, not runtime SDK infrastructure.
 - The generator accepts OpenAPI 3.1 JSON only. Do not add YAML or another CLI framework.
+- Service mode obtains the publication operation from `--openapi-operation`, validates it as
+  `APIOperation`, and defaults to `openapi.get`. File mode accepts the same optional selector only
+  to exclude the matching system route; it never fetches a publication.
 - Typer and aiofiles remain tooling dependencies, never runtime dependencies.
 - `--output` identifies one SDK package root containing both `methods/` and `types/`.
 - Manifest v2 records generator/OpenAPI versions, canonical source hash, service identity/package,
@@ -203,9 +208,11 @@ latest direct user requirement
 - Architecture pages explain internals, API pages guide public usage, generator pages own generation
   contracts/workflows, development pages own maintainer workflows, and project pages record current
   status and non-goals.
-- Do not duplicate a source of truth. Link to the owning page.
-- Documentation is English, uses relative internal links, current public imports, one H1 per file,
-  and language-tagged code fences.
+- Do not duplicate a source of truth. Refer to the owning page by repository-root path.
+- Documentation is English, uses current public imports, one H1 per file, and language-tagged code
+  fences.
+- Do not use relative inter-file Markdown links. Refer to repository files by repository-root path
+  in inline code; only HTTP(S), `mailto:`, and same-document anchor links are allowed.
 - Pages under `docs/` use lowercase kebab-case names. Root normative files retain canonical names.
 
 ## Tooling
@@ -214,7 +221,7 @@ latest direct user requirement
 - Use `make pre-commit`, `make check`, and `make check-full` as the canonical repository gates.
 - Use only real commands and Make targets declared by the repository.
 - Before handoff, run the applicable lock, sync, Ruff, mypy, compile, build, and `git diff --check`
-  validations. Review affected documentation links and structure. Report every unavailable or
+  validations. Review affected documentation references and structure. Report every unavailable or
   failed check accurately.
 - Review the complete final diff before any requested commit. Never push unless explicitly asked.
 

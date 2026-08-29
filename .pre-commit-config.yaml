@@ -19,3 +19,13 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: documentation-policy
+        name: documentation policy
+        entry: python scripts/check_documentation.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: \.md$

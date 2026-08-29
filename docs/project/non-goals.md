@@ -34,7 +34,7 @@ requests or responses and does not provide predefined keys, encryption, transact
 pub/sub, expiration workers, or a bundled external persistence backend.
 
 These are current product boundaries, not promises about a future roadmap. See
-[Project status](status.md) for the implemented surface and [`SERVICE.md`](../../SERVICE.md) for
-the authoritative product boundary.
+`docs/project/status.md` for the implemented surface and `SERVICE.md` for the authoritative product
+boundary.
 
-[Documentation index](../index.md)
+See `docs/index.md`.
