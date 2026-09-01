@@ -46,6 +46,12 @@ asyncio.run(main())
 request to `http://127.0.0.1:8000/echo.sendMessage`. The endpoint must return the fixed PokerLost
 JSON envelope, and the successful `result` must match `ExampleResult`.
 
+This minimal client has no outbound middleware and makes one transport attempt. A concrete service
+that needs service authentication constructs one lifespan-owned target client with
+`ClientCredentialsTokenProvider`, `RetryMiddleware`, and `BearerTokenMiddleware` in the order
+documented in `docs/api/middleware.md`. Retry remains disabled until a replay-safe call explicitly
+passes `RequestOptions(retry=RetryPolicy(...))`.
+
 ## Generated service packages
 
 For a generated service, replace the illustrative classes with the service package exports. The

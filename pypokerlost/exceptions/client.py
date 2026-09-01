@@ -27,8 +27,33 @@ class ClientContextError(ClientError):
 class ClientStateError(ClientError):
     """Raised when a client async-context entry is invalid."""
 
-    def __init__(self) -> None:
-        super().__init__("Client async context is already active")
+    def __init__(self, message: str = "Client async context is already active") -> None:
+        super().__init__(message)
+
+
+class MiddlewareConfigurationError(ClientError):
+    """Raised when per-call middleware inputs conflict."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class ClientRequestError(ClientError):
+    """Raised when local request preparation or transport configuration is invalid."""
+
+    operation: str | None
+
+    def __init__(
+        self,
+        *,
+        method: PokerlostMethod[Any],
+        operation: str | None = None,
+    ) -> None:
+        self.operation = operation
+        if operation is None:
+            super().__init__("Request preparation failed")
+        else:
+            super().__init__(f"Request preparation failed; operation={operation!r}")
 
 
 class ClientDecodeError(ClientError):
@@ -36,6 +61,7 @@ class ClientDecodeError(ClientError):
 
     operation: str
     status_code: int
+    retry_after: float | None
 
     def __init__(
         self,
@@ -43,9 +69,11 @@ class ClientDecodeError(ClientError):
         method: PokerlostMethod[Any],
         operation: str,
         status_code: int,
+        retry_after: float | None = None,
     ) -> None:
         self.operation = operation
         self.status_code = status_code
+        self.retry_after = retry_after
         super().__init__(
             f"Response decoding failed; operation={operation!r}; status_code={status_code}"
         )

@@ -2,22 +2,62 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from dataclasses import dataclass, field
+from typing import Never
 
 import httpx
 
 from pypokerlost.client.api_server import PRODUCTION, APIServer
 from pypokerlost.client.request import RequestBuilder, RequestOptions
 from pypokerlost.client.response import ResponseHandler
-from pypokerlost.exceptions import ClientConnectionError, ClientTimeoutError
+from pypokerlost.client.retry.retry_after import parse_retry_after
+from pypokerlost.exceptions import (
+    ClientConnectionError,
+    ClientRequestError,
+    ClientTimeoutError,
+    PokerlostError,
+)
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.types import JSONDumps, JSONLoads, JSONValue
+from pypokerlost.types import APIOperation, HTTPMethod, JSONDumps, JSONLoads, JSONValue
 
 from .base_session import DEFAULT_TIMEOUT, BaseSession
 
 
 def _strict_json_dumps(value: JSONValue) -> str:
     return json.dumps(value, allow_nan=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedPayload:
+    content: bytes = field(repr=False)
+    headers: tuple[tuple[str, str], ...] = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _RequestSuccess[ResultT]:
+    result: ResultT
+
+
+@dataclass(frozen=True, slots=True)
+class _RequestFailure:
+    error: BaseException
+
+
+type _RequestOutcome[ResultT] = _RequestSuccess[ResultT] | _RequestFailure
+type _PayloadOutcome = _PreparedPayload | _RequestFailure
+
+
+def _strip_exception(error: BaseException) -> BaseException:
+    error = error.with_traceback(None)
+    error.__cause__ = None
+    error.__context__ = None
+    return error
+
+
+def _raise_failure(failure: _RequestFailure) -> Never:
+    raise failure.error.with_traceback(None) from None
 
 
 class HttpxSession(BaseSession):
@@ -41,10 +81,12 @@ class HttpxSession(BaseSession):
         self._api_server = api_server
         self._json_dumps = json_dumps
         self._http_client: httpx.AsyncClient | None = None
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
-        if self._http_client is None:
-            self._http_client = httpx.AsyncClient()
+        async with self._lifecycle_lock:
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient()
 
     async def make_request[ResultT](
         self,
@@ -53,52 +95,226 @@ class HttpxSession(BaseSession):
         *,
         options: RequestOptions,
     ) -> ResultT:
-        request = self.request_builder.build(method, options=options)
-        url = self._api_server.api_url(request.method)
-        serialized = self._json_dumps(request.data)
-        if not isinstance(serialized, str):
-            raise TypeError("json_dumps must return str")
-        content = serialized.encode("utf-8")
+        operation: APIOperation | None = None
+        http_method: HTTPMethod | None = None
+        returning: object | None = None
+        setup_failure: ClientRequestError | None = None
+        try:
+            try:
+                operation, http_method = self.request_builder.describe(method)
+                returning = method.__returning__
+            except Exception:
+                setup_failure = ClientRequestError(
+                    method=method,
+                    operation=operation,
+                )
 
-        await self.start()
-        http_client = self._http_client
-        if http_client is None:
-            raise RuntimeError("HttpxSession failed to start")
+            if setup_failure is None:
+                if operation is None or http_method is None or returning is None:
+                    raise AssertionError("HTTP request metadata is incomplete")
+                return await self._make_request_with_metadata(
+                    method,
+                    operation=operation,
+                    http_method=http_method,
+                    returning=returning,
+                    timeout=timeout,
+                    options=options,
+                )
+        finally:
+            method = None  # type: ignore[assignment]
+            options = RequestOptions()
+            returning = None
 
-        client_error: ClientTimeoutError | ClientConnectionError
-        safe_cause: TimeoutError | ConnectionError
+        if setup_failure is None:
+            raise AssertionError("HTTP request setup completed without a result")
+        raise setup_failure from None
+
+    async def _make_request_with_metadata[ResultT](
+        self,
+        method: PokerlostMethod[ResultT],
+        *,
+        operation: APIOperation,
+        http_method: HTTPMethod,
+        returning: object,
+        timeout: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> ResultT:
+        effective_timeout = self.timeout if timeout is None else timeout
+        request_options = options if options is not None else RequestOptions()
+        payload: _PreparedPayload | None = None
+        payload_outcome: _PayloadOutcome | None = None
+        try:
+            payload_outcome = self._prepare_payload(
+                method=method,
+                operation=operation,
+                http_method=http_method,
+                options=request_options,
+            )
+            if isinstance(payload_outcome, _RequestFailure):
+                _raise_failure(payload_outcome)
+            payload = payload_outcome
+            return await self._send_request(
+                method=method,
+                operation=operation,
+                http_method=http_method,
+                returning=returning,
+                content=payload.content,
+                headers=payload.headers,
+                timeout=effective_timeout,
+            )
+        finally:
+            method = None  # type: ignore[assignment]
+            options = None
+            request_options = RequestOptions()
+            payload = None
+            payload_outcome = None
+
+    def _prepare_payload[ResultT](
+        self,
+        *,
+        method: PokerlostMethod[ResultT],
+        operation: APIOperation,
+        http_method: HTTPMethod,
+        options: RequestOptions,
+    ) -> _PayloadOutcome:
+        try:
+            request = self.request_builder.build(
+                method,
+                options=options,
+                operation=operation,
+                http_method=http_method,
+            )
+            serialized = self._json_dumps(request.data)
+            if not isinstance(serialized, str):
+                raise TypeError("json_dumps must return str")
+            return _PreparedPayload(
+                content=serialized.encode("utf-8"),
+                headers=request.headers,
+            )
+        except Exception:
+            return _RequestFailure(
+                ClientRequestError(method=method, operation=operation),
+            )
+
+    async def _send_request[ResultT](
+        self,
+        *,
+        method: PokerlostMethod[ResultT],
+        operation: APIOperation,
+        http_method: HTTPMethod,
+        returning: object,
+        content: bytes,
+        headers: tuple[tuple[str, str], ...],
+        timeout: int,
+    ) -> ResultT:
+        """Send one already encoded SDK-internal request through this transport."""
+        url = ""
+        http_client: httpx.AsyncClient | None = None
+        outcome: _RequestOutcome[ResultT]
+        try:
+            url = self._api_server.api_url(operation)
+            await self.start()
+            http_client = self._http_client
+            if http_client is None:
+                outcome = _RequestFailure(
+                    ClientRequestError(method=method, operation=operation),
+                )
+            else:
+                outcome = await self._perform_request(
+                    http_client=http_client,
+                    method=method,
+                    operation=operation,
+                    http_method=http_method,
+                    returning=returning,
+                    url=url,
+                    content=content,
+                    headers=headers,
+                    timeout=timeout,
+                )
+        except asyncio.CancelledError as error:
+            outcome = _RequestFailure(_strip_exception(error))
+        except Exception:
+            outcome = _RequestFailure(
+                ClientRequestError(method=method, operation=operation),
+            )
+        finally:
+            method = None  # type: ignore[assignment]
+            returning = None
+            content = b""
+            headers = ()
+            http_client = None
+            url = ""
+        if isinstance(outcome, _RequestFailure):
+            _raise_failure(outcome)
+        return outcome.result
+
+    async def _perform_request[ResultT](
+        self,
+        *,
+        http_client: httpx.AsyncClient,
+        method: PokerlostMethod[ResultT],
+        operation: APIOperation,
+        http_method: HTTPMethod,
+        returning: object,
+        url: str,
+        content: bytes,
+        headers: tuple[tuple[str, str], ...],
+        timeout: int,
+    ) -> _RequestOutcome[ResultT]:
         try:
             response = await http_client.request(
-                method=request.http_method,
+                method=http_method,
                 url=url,
                 content=content,
-                headers=request.headers,
+                headers=headers,
                 timeout=timeout,
             )
+        except asyncio.CancelledError as error:
+            return _RequestFailure(_strip_exception(error))
         except httpx.TimeoutException:
-            client_error = ClientTimeoutError(
-                method=method,
-                operation=request.method,
+            return _RequestFailure(
+                ClientTimeoutError(method=method, operation=operation),
             )
-            safe_cause = TimeoutError("HTTP request timed out")
-        except httpx.TransportError:
-            client_error = ClientConnectionError(
-                method=method,
-                operation=request.method,
+        except httpx.NetworkError, httpx.ProxyError, httpx.RemoteProtocolError:
+            return _RequestFailure(
+                ClientConnectionError(method=method, operation=operation),
             )
-            safe_cause = ConnectionError("HTTP transport failed")
-        else:
-            return self.response_handler.handle(
+        except (
+            httpx.TransportError,
+            httpx.HTTPError,
+            httpx.InvalidURL,
+            httpx.StreamError,
+            TypeError,
+            ValueError,
+        ):
+            return _RequestFailure(
+                ClientRequestError(method=method, operation=operation),
+            )
+        except Exception:
+            return _RequestFailure(
+                ClientRequestError(method=method, operation=operation),
+            )
+
+        try:
+            result = self.response_handler._handle_with_metadata(
                 method=method,
-                operation=request.method,
+                operation=operation,
                 status_code=response.status_code,
                 content=response.text,
+                retry_after=parse_retry_after(response.headers.get("Retry-After")),
+                returning=returning,
             )
-
-        raise client_error from safe_cause
+        except PokerlostError as error:
+            return _RequestFailure(_strip_exception(error))
+        except Exception:
+            return _RequestFailure(
+                ClientRequestError(method=method, operation=operation),
+            )
+        return _RequestSuccess(result)
 
     async def close(self) -> None:
-        http_client = self._http_client
-        self._http_client = None
+        async with self._lifecycle_lock:
+            http_client = self._http_client
+            self._http_client = None
         if http_client is not None:
             await http_client.aclose()

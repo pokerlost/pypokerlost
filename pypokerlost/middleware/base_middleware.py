@@ -1,38 +1,51 @@
-"""Typed middleware contracts for API method execution."""
+"""Typed middleware contracts for one immutable API call context."""
 
 from __future__ import annotations
 
 import abc
-from typing import TYPE_CHECKING, Protocol
+from types import TracebackType
+from typing import Protocol, Self
 
 from pypokerlost.client.request import RequestOptions
-from pypokerlost.methods import PokerlostMethod
-
-if TYPE_CHECKING:
-    from pypokerlost.client.client import Client
+from pypokerlost.middleware.context import APIMiddlewareContext
 
 
-class MiddlewareHandler(Protocol):
-    """Execute any method through the remaining middleware chain."""
+class APIMiddlewareCallNext[ResultT](Protocol):
+    """Execute the captured method through the remaining middleware chain."""
 
-    async def __call__[ResultT](
+    async def __call__(
         self,
-        method: PokerlostMethod[ResultT],
         *,
         options: RequestOptions | None = None,
     ) -> ResultT:
-        """Execute ``method``, optionally replacing inherited request options."""
+        """Continue, optionally replacing immutable transport options."""
 
 
-class BaseMiddleware(abc.ABC):
-    """Wrap one API method execution."""
+class APIMiddleware(abc.ABC):
+    """Wrap one API call without access to its body or declared result type."""
 
     @abc.abstractmethod
     async def __call__[ResultT](
         self,
-        handler: MiddlewareHandler,
-        method: PokerlostMethod[ResultT],
-        client: Client,
-        options: RequestOptions,
+        call_next: APIMiddlewareCallNext[ResultT],
+        context: APIMiddlewareContext,
     ) -> ResultT:
-        """Wrap ``handler`` for one bound API method execution."""
+        """Wrap ``call_next`` for one immutable call context."""
+
+    async def start(self) -> None:  # noqa: B027
+        """Start owned resources; the default implementation is a no-op."""
+
+    async def close(self) -> None:  # noqa: B027
+        """Release owned resources; the default implementation is a no-op."""
+
+    async def __aenter__(self) -> Self:
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.close()

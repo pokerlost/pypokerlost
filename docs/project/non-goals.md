@@ -10,7 +10,9 @@ The SDK does not own:
 - PokerLost service business logic or domain workflows;
 - service databases, ORM models, repositories, or direct database access;
 - accounts or authentication implementations;
-- an OAuth2 scope policy, role policy, token server, token refresh flow, or credential storage;
+- an OAuth2 scope policy, role policy, token server, refresh-token grant, or persistent credential
+  storage;
+- business idempotency keys, payload fingerprints, workflow, outbox, or reconciliation state;
 - concrete service-specific method packages in the core repository.
 
 ## Transport and execution
@@ -18,7 +20,8 @@ The SDK does not own:
 The current SDK does not provide:
 
 - automatic service discovery or service routing;
-- a generic retry or request replay framework;
+- globally enabled retry or automatic replay after `401` or `403`;
+- proof that a mutation is replay-safe from its HTTP method;
 - streaming, WebSocket, or event APIs;
 - multiple transport protocols;
 - dynamic endpoint lookup or an endpoint-specific `Client` facade;
@@ -26,6 +29,11 @@ The current SDK does not provide:
 
 The repository `Dockerfile` builds artifacts only; a runtime application container, deployment
 configuration, and publishing automation are outside its responsibility.
+
+The SDK's explicit `RetryPolicy` owns bounded transport attempts only. The consumer owns the same
+business operation identifier and semantic payload across mutation attempts, target-side
+idempotency guarantees, database transaction boundaries, and reconciliation after an ambiguous
+outcome.
 
 ## Storage boundary
 

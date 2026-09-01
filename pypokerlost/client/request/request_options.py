@@ -9,11 +9,14 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
+    Field,
     StringConstraints,
     TypeAdapter,
     ValidationError,
     model_validator,
 )
+
+from pypokerlost.client.retry import RetryPolicy
 
 type _HTTPHeaderName = Annotated[
     str,
@@ -61,12 +64,15 @@ class RequestOptions(BaseModel):
         hide_input_in_errors=True,
     )
 
-    headers: _SafeHTTPHeaders = ()
+    headers: _SafeHTTPHeaders = Field(default=(), repr=False, exclude=True)
+    retry: RetryPolicy | None = None
 
     @model_validator(mode="before")
     def _replace_extra_input_values(value: Any) -> Any:
         if isinstance(value, dict):
-            return {key: item if key == "headers" else None for key, item in value.items()}
+            return {
+                key: item if key in {"headers", "retry"} else None for key, item in value.items()
+            }
         return value
 
     def with_headers(self, headers: Mapping[str, str]) -> Self:
@@ -76,4 +82,7 @@ class RequestOptions(BaseModel):
         retained_headers = tuple(
             (name, value) for name, value in self.headers if name.casefold() not in replaced_names
         )
-        return type(self)(headers=retained_headers + additions)
+        return type(self)(
+            headers=retained_headers + additions,
+            retry=self.retry,
+        )

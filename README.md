@@ -2,6 +2,10 @@
 
 Typed asynchronous Python SDK for PokerLost API operations.
 
+The SDK provides one immutable outbound middleware pipeline, OAuth2 client-credentials service
+authentication, and explicit per-call bounded retry in addition to typed generated methods and the
+universal PokerLost response envelope.
+
 ## Requirements
 
 - Python 3.14 or newer
@@ -48,12 +52,17 @@ and nested API objects are imported from `pypokerlost.types.<service_package>`.
 The runtime keeps typed methods, transport requests, response validation, and generated API
 objects in separate layers. See `docs/architecture/overview.md`.
 
+Service consumers compose one target-specific client for each real target and own it in their
+application lifespan. Authentication and retry usage is documented in `docs/api/middleware.md`;
+retry is disabled unless a call supplies `RequestOptions(retry=...)`.
+
 ## Documentation
 
 - `docs/index.md`
 - `docs/getting-started/quickstart.md`
 - `docs/architecture/overview.md`
 - `docs/api/client.md`
+- `docs/api/middleware.md`
 - `docs/generator/usage.md`
 - `docs/development/commands.md`
 

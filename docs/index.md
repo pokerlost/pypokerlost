@@ -11,11 +11,12 @@ contracts, and maintainer workflows for `pypokerlost`.
 
 ## API
 
-- `docs/api/client.md`
+- `docs/api/client.md` — client construction, execution, options, and lifecycle.
 - `docs/api/types.md`
 - `docs/api/methods.md`
-- `docs/api/transport.md`
-- `docs/api/middleware.md`
+- `docs/api/transport.md` — request options, transport, envelope decoding, and Retry-After.
+- `docs/api/middleware.md` — outbound middleware, client-credentials authentication, and
+  explicit bounded retry.
 - `docs/api/storage.md`
 - `docs/api/api-server.md`
 - `docs/api/openapi-extra.md`
@@ -47,8 +48,8 @@ contracts, and maintainer workflows for `pypokerlost`.
 
 ## Project
 
-- `docs/project/status.md`
-- `docs/project/non-goals.md`
+- `docs/project/status.md` — implemented runtime and generator surface.
+- `docs/project/non-goals.md` — service, authorization-policy, and business-idempotency boundaries.
 
 Normative product boundaries live in `SERVICE.md`. Contributors and coding agents must also follow
 `AGENTS.md`.

@@ -5,27 +5,56 @@ resources.
 
 ## Client ownership
 
-Each `Client` owns exactly one asynchronous session, one asynchronous storage backend, and an
-ordered middleware collection. The defaults are `HttpxSession` and `MemoryStorage`; injected
-resources follow the same lifecycle.
+Each `Client` owns exactly one asynchronous session, one asynchronous storage backend, and one
+immutable ordered middleware tuple. The defaults are `HttpxSession` and `MemoryStorage`; injected
+resources and middleware follow the same lifecycle.
 
 Direct startup order is:
 
 ```text
 storage.start()
 → session.start()
+→ middleware[0].start()
+→ middleware[1].start()
+→ ...
 ```
 
-If session startup fails, the client closes the already-started storage before re-raising the
-original failure. Direct shutdown through `Client.stop()` reverses ownership order:
+Any startup failure closes every earlier resource before re-raising the original failure. Direct
+shutdown through `Client.stop()` reverses ownership order:
 
 ```text
-session.close()
+...
+→ middleware[1].close()
+→ middleware[0].close()
+→ session.close()
 → storage.close()
 ```
 
-Both close operations are attempted. `Client` has no `close()` method; its explicit lifecycle pair
+Every close operation is attempted. `Client` has no `close()` method; its explicit lifecycle pair
 is `start()` and `stop()`.
+
+For the canonical authenticated tuple, `RetryMiddleware` has no resource of its own and
+`BearerTokenMiddleware` starts and closes its `AccessTokenProvider`. The standard
+`ClientCredentialsTokenProvider` owns a dedicated token session and its process-local cache.
+Closing it cancels and awaits any in-flight acquisition and clears token-bearing cache/task
+references. A later `get_access_token()` fails with `ClientStateError` until `start()` makes the
+provider reusable.
+
+## Target-specific ownership
+
+A long-running service constructs one client for each real outbound target, starts it in the
+application lifespan, stores it in an explicitly typed resource field, and reuses it for concurrent
+requests. Shutdown stops that client before resources on which its surrounding composition
+depends.
+
+Do not create a client, token provider, or transport per request. Do not use a module-global client,
+string-keyed service locator, direct HTTP fallback, or placeholder client for a service with no real
+target.
+
+Remote execution remains outside a request-owned database transaction. Token acquisition, the
+protected operation, and retry sleep can all await; none belongs inside a transaction context.
+Business workflow persistence and reconciliation remain service-owned rather than client lifecycle
+work.
 
 ## Async context management
 
@@ -37,14 +66,14 @@ from pypokerlost import Client
 
 async def use_client() -> None:
     async with Client() as client:
-        # Session and storage are active here.
+        # Session, storage, and middleware are active here.
         ...
 ```
 
-Context entry starts storage, starts the session, and then installs the client as the task-local
-current client. Context exit first restores the previous current-client token, then closes the
-session and storage. A setup failure or cancellation unwinds every resource that was successfully
-entered.
+Context entry starts storage, session, and middleware in registration order, then installs the
+client as the task-local current client. Context exit first restores the previous current-client
+token, then closes middleware in reverse order, the session, and storage. A setup failure or
+cancellation unwinds every resource that was successfully entered.
 
 The same `Client` instance cannot have two overlapping async-context entries; an attempted second
 entry raises `ClientStateError`. This lifecycle guard does not serialize independent method requests
@@ -77,8 +106,8 @@ Calling `start()` alone does not install a task-local current client. Use explic
 3. `ClientContextError` when neither exists.
 
 Calling `method.as_(client)` binds that exact method instance and returns it, so
-`await method.as_(client)` is valid. By contrast, `await client(method)` copies and binds the method
-for execution, leaving the caller's reusable instance unchanged.
+`await method.as_(client)` is valid. By contrast, `await client(method)` reconstructs and binds a
+deep semantic snapshot for execution, leaving the caller's reusable instance unchanged.
 
 Task-local state uses one `ContextVar`. Nested client contexts restore the outer client exactly,
 and separately created tasks inherit normal Python context-variable semantics.
@@ -97,8 +126,8 @@ Client context
 ```
 
 Exit reverses that order. The user lifecycle leaves before the client resets its current-client
-context and closes transport and storage resources. Re-entering an already running application
-raises `ApplicationStateError`.
+context and closes middleware, transport, and storage resources. Re-entering an already running
+application raises `ApplicationStateError`.
 
 `Application.run_async()` runs on the caller-owned event loop and does not own process signals.
 `Application.run()` is the synchronous loop-owning entry point; it uses `asyncio.run()` and handles

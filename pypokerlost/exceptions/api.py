@@ -17,6 +17,7 @@ class PokerlostAPIError(PokerlostError):
     status_code: int
     error: str
     error_message: str
+    retry_after: float | None
 
     def __init__(
         self,
@@ -26,11 +27,13 @@ class PokerlostAPIError(PokerlostError):
         status_code: int,
         error: str,
         error_message: str,
+        retry_after: float | None = None,
     ) -> None:
         self.operation = operation
         self.status_code = status_code
         self.error = error
         self.error_message = error_message
+        self.retry_after = retry_after
         super().__init__(
             f"PokerLost API error {error!r}: {error_message}; "
             f"operation={operation!r}; status_code={status_code}"
@@ -46,9 +49,11 @@ class PokerlostProtocolError(PokerlostError):
         method: PokerlostMethod[Any],
         operation: str,
         status_code: int,
+        retry_after: float | None = None,
     ) -> None:
         self.operation = operation
         self.status_code = status_code
+        self.retry_after = retry_after
         super().__init__(
             f"PokerLost protocol error; operation={operation!r}; status_code={status_code}",
         )

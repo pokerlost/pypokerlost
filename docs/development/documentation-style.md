@@ -42,8 +42,8 @@ Examples use current public imports and Python 3.14 syntax. Compile or import-ch
 practical. If an example shows a class or service package not tracked in this repository, label it
 as illustrative instead of presenting it as an available import.
 
-Do not include credentials, tokens, private repository URLs, raw request or response bodies, or
-unimplemented authentication, retry, streaming, or WebSocket APIs. Update examples when a public
-import, command, minimum Python version, or behavior changes.
+Do not include credential values, token values, authorization header values, private repository
+URLs, raw sensitive request or response bodies, or unimplemented streaming or WebSocket APIs.
+Update examples when a public import, command, minimum Python version, or behavior changes.
 
 See `docs/index.md`.

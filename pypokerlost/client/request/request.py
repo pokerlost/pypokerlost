@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pypokerlost.types import APIOperation, HTTPMethod, JSONValue
 
@@ -21,5 +21,5 @@ class Request(BaseModel):
 
     method: APIOperation
     http_method: HTTPMethod
-    data: dict[str, JSONValue]
-    headers: tuple[tuple[str, str], ...] = ()
+    data: dict[str, JSONValue] = Field(repr=False)
+    headers: tuple[tuple[str, str], ...] = Field(default=(), repr=False, exclude=True)

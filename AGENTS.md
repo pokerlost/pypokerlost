@@ -36,10 +36,16 @@ latest direct user requirement
 
   ```text
   client/api_server.py
+  client/auth/
   client/request/
   client/response/
+  client/retry/
   client/session/
   ```
+
+- Keep the one outbound method-call middleware facade under `pypokerlost/middleware/`. Middleware
+  receives immutable safe metadata and request options, not methods, request bodies, response
+  types, sessions, or HTTPX objects.
 
 - `OpenAPIExtra` lives at `pypokerlost/openapi_extra.py` and owns only non-authorization contract
   metadata.
@@ -59,7 +65,9 @@ latest direct user requirement
   supported and copy caller-owned collections.
 - Preserve established names and casing: `PokerlostType`, `MutablePokerlostType`,
   `PokerlostMethod`, `APIOperation`, `APIServer`, `HttpxSession`, `OpenAPIExtra`, `JSONValue`,
-  `HTTPMethod`, `Request`, `RequestBuilder`, `RequestOptions`, `Response`, and `ResponseHandler`.
+  `HTTPMethod`, `Request`, `RequestBuilder`, `RequestOptions`, `Response`, `ResponseHandler`,
+  `APIMiddleware`, `APIMiddlewareCallNext`, `APIMiddlewareContext`, `BearerTokenMiddleware`,
+  `RetryMiddleware`, `RetryPolicy`, `ClientCredentials`, and `ClientCredentialsTokenProvider`.
 - Project-owned modules, functions, parameters, and attributes use lowercase `snake_case`.
   `middleware` is a singular collective noun.
 
@@ -121,14 +129,24 @@ latest direct user requirement
 
 ## Client/request/response
 
-- `Client` owns exactly one `BaseSession`, one `BaseStorage`, and one mutable ordered middleware
-  list. `Client()` defaults to `HttpxSession` and `MemoryStorage`.
-- Client startup is storage then session. Shutdown is session then storage, and both close
-  operations must be attempted. A failed session startup closes already-started storage.
+- `Client` owns exactly one `BaseSession`, one `BaseStorage`, and one immutable ordered middleware
+  tuple. `Client()` defaults to `HttpxSession` and `MemoryStorage`.
+- Client startup is storage, session, then middleware in registration order. Shutdown is
+  middleware, session, then storage in reverse ownership order, and all registered cleanup must be
+  attempted. A startup failure unwinds every already-started resource.
+- Before middleware runs, `Client` reconstructs a deep semantic snapshot from explicitly supplied
+  method input, binds it to the executing client, and captures the validated operation, HTTP
+  method, and declared result type exactly once. The same snapshot and metadata are reused across
+  attempts; the transport must not read mutable method metadata again.
 - `RequestBuilder` produces a frozen `Request` containing only `method`, `http_method`, `data`, and
   immutable headers. It owns no URL, JSON codec, bytes, or I/O.
 - `HttpxSession` owns `APIServer`, URL construction, strict JSON encoding, UTF-8 conversion, HTTPX
   resources, concrete I/O, JSON decoding configuration, and `ResponseHandler`.
+- Map timeout and remote/network transport failures to their retryable canonical exceptions. Map
+  local HTTP request/protocol/configuration failures to non-retryable `ClientRequestError`.
+- Before a canonical exception leaves the sensitive transport/decoder path, remove raw request and
+  response data, credentials, and authorization values from traceback frame locals and exception
+  chains as well as from messages and repr output.
 - `Response[ResultT]` is the fixed extra-forbid envelope with `ok`, `result`, `error`, and
   `error_message`.
 - `ResponseHandler` validates the envelope, maps SDK errors, and validates `__returning__` with the
@@ -140,15 +158,49 @@ latest direct user requirement
 
 ## Middleware
 
-- `BaseMiddleware` is the single method-call middleware contract. Middleware wraps only
-  `Client.make_request()` execution, never lifecycle or transport internals.
-- `Client` copies constructor input; `add_middleware()` appends. Each request takes an immutable
-  tuple snapshot, and the first configured component is outermost.
-- `MiddlewareHandler` remains polymorphic over each method it receives, allowing an alternate method
-  through the remaining chain.
-- `RequestOptions` is the only typed per-request transport extension. It owns immutable ordered
-  string headers; omitted next-handler options inherit, supplied options replace.
-- Do not add built-in authorization, retry, credential, or replay middleware.
+- `APIMiddleware` is the one outbound method-call middleware contract. It wraps only
+  `Client.make_request()` execution and owns an optional async lifecycle.
+- `Client` copies constructor input into an immutable tuple. Middleware cannot be appended or
+  replaced after construction; the first configured component is outermost.
+- `APIMiddlewareContext` exposes only the validated operation, HTTP method, and immutable
+  `RequestOptions`. Middleware cannot replace the method or mutate its operation, body, or declared
+  result type.
+- `APIMiddlewareCallNext` executes the captured method. Omitting options inherits the current
+  immutable options; explicitly supplied options replace them for the remaining chain.
+- `RequestOptions` is the only typed per-call transport extension. It owns secret-safe immutable
+  headers and an optional `RetryPolicy`; the top-level `Client` call accepts it explicitly.
+- The canonical authenticated order is `RetryMiddleware()` outside
+  `BearerTokenMiddleware(provider)`. Every retry attempt resolves bearer credentials again, while
+  the provider normally serves a usable process-local cached token.
+- `BearerTokenMiddleware` rejects an existing `Authorization` header case-insensitively. It does
+  not parse JWTs, make authorization decisions, or replay `401`/`403` responses.
+- Retry stays disabled without a per-call policy. It is allowed only for read-only or contractually
+  idempotent calls; mutation replay must reuse the same business operation identifier and semantic
+  payload.
+- `RetryMiddleware` consumes the policy before calling the inner chain, so duplicate built-in retry
+  components do not multiply attempts. Explicit policy retries connection/timeout failures and
+  statuses `408`, `425`, `429`, `500`, `502`, `503`, and `504` only.
+- Retry uses capped exponential full jitter, honors validated `Retry-After` delta/date values within
+  maximum delay and total budget, propagates cancellation, and preserves the final canonical SDK
+  exception.
+- The SDK never creates business idempotency keys, fingerprints, workflow, outbox, or
+  reconciliation state. A service must not hold a database transaction across a remote call or
+  retry delay.
+
+## Service authentication
+
+- `ClientCredentialsTokenProvider` is the focused OAuth2 `client_credentials` implementation for
+  PokerLost service authentication. It sends form data with HTTP Basic client authentication and
+  decodes `/oauth.token` through the standard `ApplicationResponse` pipeline.
+- Client credentials, access-token values, and authorization headers remain secret-safe and must
+  never appear in repr output, exceptions, logs, telemetry, or documentation examples.
+- The provider cache is process-local, monotonic, refresh-skew aware, and single-flight. Waiter
+  cancellation must not cancel a refresh shared by other callers; failed acquisition must leave a
+  later attempt possible; close clears token-bearing references and forbids access until restart.
+- The provider itself makes one token attempt. Only an explicit outer per-call retry policy may
+  repeat a retryable acquisition failure as part of the same bounded protected call.
+- Service principals do not use refresh tokens. The provider performs acquisition on demand and
+  does not run a background refresh task or automatically replay a failed authorized operation.
 
 ## Storage
 
@@ -229,10 +281,10 @@ latest direct user requirement
 
 - Do not perform unrelated refactoring, renaming, formatting, dependency changes, or public API
   changes.
-- Do not add concrete service methods, authentication/token behavior, authorization policy,
-  service routing, retries, streaming, WebSocket/events, direct database access, dynamic endpoint
-  lookup, runtime OpenAPI generation, settings systems, or compatibility layers without a direct
-  requirement.
+- Do not add concrete service methods, token issuance, authorization policy, service routing,
+  business idempotency persistence, streaming, WebSocket/events, direct database access, dynamic
+  endpoint lookup, runtime OpenAPI generation, settings systems, or compatibility layers without
+  a direct requirement.
 - Do not add tests, CI/CD, Docker Compose, runtime containers, Helm, code generation, or publishing
   automation unless the latest direct requirement asks for them.
 - Do not use destructive Git commands, commit, push, or alter branches unless explicitly requested.
