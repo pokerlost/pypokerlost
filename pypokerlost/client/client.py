@@ -1,161 +1,202 @@
-"""Central asynchronous PokerLost API client."""
+"""Central asynchronous body-only Pokerlost client."""
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from types import TracebackType
 from typing import Self, cast
 
-from pypokerlost.client.current_client import use_current_client
-from pypokerlost.client.request import RequestOptions
-from pypokerlost.client.retry import PokerLostRetryPolicy
-from pypokerlost.client.retry.executor import execute_with_retry
-from pypokerlost.client.session import BaseSession, HttpxSession
-from pypokerlost.exceptions import ClientRequestError, ClientStateError, ClientTimeoutError
+from pydantic import ValidationError
+
+from pypokerlost.errors import PokerlostConfigurationError
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.storage import BaseStorage, MemoryStorage
-from pypokerlost.types import APIOperation, HTTPMethod, HTTPRequestContentType
+from pypokerlost.middleware import (
+    PokerlostAuthorizationMiddleware,
+    PokerlostCallNext,
+    PokerlostMiddleware,
+    PokerlostMiddlewareRequest,
+    PokerlostRetryMiddleware,
+)
+from pypokerlost.session import HttpxSession, PokerlostSession
+
+from .pokerlost_request_builder import PokerlostRequestBuilder
+from .pokerlost_request_options import PokerlostRequestOptions
 
 
-class Client:
-    """Own one pluggable asynchronous session and storage resource."""
+class PokerlostClient:
+    """Execute typed methods through retry, authorization, and JSON transport."""
 
     def __init__(
         self,
-        session: BaseSession | None = None,
-        storage: BaseStorage | None = None,
+        session: PokerlostSession | None = None,
+        *,
+        middleware: Sequence[PokerlostMiddleware] = (),
     ) -> None:
-        self.session: BaseSession = session if session is not None else HttpxSession()
-        self.storage: BaseStorage = storage if storage is not None else MemoryStorage()
+        supplied = tuple(middleware)
+        retry_count = sum(isinstance(item, PokerlostRetryMiddleware) for item in supplied)
+        authorization_count = sum(
+            isinstance(item, PokerlostAuthorizationMiddleware) for item in supplied
+        )
+        if retry_count > 1 or authorization_count > 1:
+            raise PokerlostConfigurationError(
+                "Pokerlost middleware can contain at most one retry and authorization layer"
+            )
+        if retry_count == 0:
+            supplied = (PokerlostRetryMiddleware(), *supplied)
+        retry_index = next(
+            index
+            for index, item in enumerate(supplied)
+            if isinstance(item, PokerlostRetryMiddleware)
+        )
+        authorization_indexes = tuple(
+            index
+            for index, item in enumerate(supplied)
+            if isinstance(item, PokerlostAuthorizationMiddleware)
+        )
+        if retry_index != 0 or (authorization_indexes and authorization_indexes[0] <= retry_index):
+            raise PokerlostConfigurationError(
+                "Middleware order must be retry outermost and authorization inside it"
+            )
+        self._session = session if session is not None else HttpxSession()
+        self._middleware = supplied
+        self._request_builder = PokerlostRequestBuilder()
         self._context_stack: AsyncExitStack | None = None
 
+    @property
+    def session(self) -> PokerlostSession:
+        return self._session
+
+    @property
+    def middleware(self) -> tuple[PokerlostMiddleware, ...]:
+        return self._middleware
+
+    @property
+    def has_authorization_middleware(self) -> bool:
+        return any(isinstance(item, PokerlostAuthorizationMiddleware) for item in self._middleware)
+
     async def start(self) -> Self:
-        async with AsyncExitStack() as rollback_stack:
-            await self.storage.start()
-            rollback_stack.push_async_callback(self.storage.close)
-            await self.session.start()
-            rollback_stack.push_async_callback(self.session.close)
-            rollback_stack.pop_all()
+        await self._session.start()
         return self
 
     async def stop(self) -> None:
-        async with AsyncExitStack() as cleanup_stack:
-            cleanup_stack.push_async_callback(self.storage.close)
-            cleanup_stack.push_async_callback(self.session.close)
+        await self._session.close()
 
     async def __call__[ResultT](
         self,
         method: PokerlostMethod[ResultT],
-        request_timeout: int | None = None,
         *,
-        options: RequestOptions | None = None,
+        options: PokerlostRequestOptions | None = None,
     ) -> ResultT:
         try:
             return await self.make_request(
                 method,
-                request_timeout=request_timeout,
                 options=options,
             )
         finally:
-            method = None  # type: ignore[assignment]
+            self = cast("PokerlostClient", None)
+            method = cast("PokerlostMethod[ResultT]", None)
             options = None
 
     async def make_request[ResultT](
         self,
         method: PokerlostMethod[ResultT],
-        request_timeout: int | None = None,
         *,
-        options: RequestOptions | None = None,
+        options: PokerlostRequestOptions | None = None,
     ) -> ResultT:
         executing_method = cast("PokerlostMethod[ResultT]", None)
-        request_options = RequestOptions()
-        operation = cast("APIOperation", None)
-        http_method = cast("HTTPMethod", None)
-        content_type = cast("HTTPRequestContentType", None)
-        transport_options = RequestOptions()
-        retry_policy: PokerLostRetryPolicy | None = None
-        budget_timeout_error: ClientTimeoutError | None = None
-        execute_session = cast("Callable[[], Awaitable[ResultT]]", None)
-        returning: object = None
-        setup_failure: ClientRequestError | None = None
+        request = cast("PokerlostMiddlewareRequest", None)
+        call_next = cast("PokerlostCallNext[object]", None)
+        transport = cast("PokerlostCallNext[object]", None)
+        layer = cast("PokerlostMiddleware", None)
+        serialized_method = ""
         try:
             try:
+                if not isinstance(method, PokerlostMethod):
+                    raise TypeError("Pokerlost client requires a PokerlostMethod")
+                serialized_method = method.model_dump_json(
+                    by_alias=False,
+                    exclude_unset=True,
+                )
                 executing_method = (
                     type(method)
-                    .model_validate(
-                        method.model_dump(
-                            mode="python",
-                            by_alias=False,
-                            exclude_unset=True,
-                        ),
+                    .model_validate_json(
+                        serialized_method,
+                        strict=True,
                     )
                     .as_(self)
                 )
-                request_options = options if options is not None else RequestOptions()
-                operation, http_method, content_type = self.session.request_builder.describe(
-                    executing_method
+                call_options = options if options is not None else PokerlostRequestOptions()
+                request = cast(
+                    "PokerlostMiddlewareRequest",
+                    self._request_builder.build(executing_method, call_options),
                 )
-                returning = executing_method.__returning__
-            except Exception:
-                setup_failure = ClientRequestError(
-                    method=method,
-                    operation=operation,
-                )
-
-            if setup_failure is None:
-                retry_policy = request_options.retry
-                transport_options = request_options.model_copy(update={"retry": None})
-
-                async def execute_session() -> ResultT:
-                    return await self.session._make_request_with_metadata(
-                        executing_method,
-                        operation=operation,
-                        http_method=http_method,
-                        content_type=content_type,
-                        returning=returning,
-                        timeout=request_timeout,
-                        options=transport_options,
+                if executing_method.required_scopes and not self.has_authorization_middleware:
+                    raise PokerlostConfigurationError(
+                        "Protected operation requires PokerlostAuthorizationMiddleware",
+                        operation=executing_method.operation,
                     )
+            except TypeError, ValueError, ValidationError:
+                raise PokerlostConfigurationError(
+                    "Pokerlost method could not be prepared"
+                ) from None
 
-                if retry_policy is None:
-                    return await execute_session()
-                budget_timeout_error = ClientTimeoutError(
-                    method=executing_method,
-                    operation=operation,
-                )
-                return await execute_with_retry(
-                    execute_session,
-                    retry_policy,
-                    budget_timeout_error,
-                )
+            async def transport(
+                current_request: PokerlostMiddlewareRequest,
+                session: PokerlostSession = self._session,
+            ) -> object:
+                try:
+                    return await session.send(current_request)
+                finally:
+                    current_request = cast("PokerlostMiddlewareRequest", None)
+                    session = cast("PokerlostSession", None)
+
+            call_next = transport
+            for layer in reversed(self._middleware):
+                call_next = self._wrap(layer, call_next)
+            return cast(ResultT, await call_next(request))
         finally:
-            method = None  # type: ignore[assignment]
-            executing_method = None  # type: ignore[assignment]
+            self = cast("PokerlostClient", None)
+            method = cast("PokerlostMethod[ResultT]", None)
+            executing_method = cast("PokerlostMethod[ResultT]", None)
             options = None
-            request_options = RequestOptions()
-            transport_options = RequestOptions()
-            retry_policy = None
-            budget_timeout_error = None
-            execute_session = cast("Callable[[], Awaitable[ResultT]]", None)
-            returning = None
+            request = cast("PokerlostMiddlewareRequest", None)
+            call_next = cast("PokerlostCallNext[object]", None)
+            transport = cast("PokerlostCallNext[object]", None)
+            layer = cast("PokerlostMiddleware", None)
+            serialized_method = ""
 
-        if setup_failure is None:
-            raise AssertionError("Client request setup completed without a result")
-        raise setup_failure from None
+    def _wrap(
+        self,
+        middleware: PokerlostMiddleware,
+        call_next: PokerlostCallNext[object],
+    ) -> PokerlostCallNext[object]:
+        async def wrapped(
+            request: PokerlostMiddlewareRequest,
+            current_middleware: PokerlostMiddleware = middleware,
+            current_call_next: PokerlostCallNext[object] = call_next,
+        ) -> object:
+            try:
+                return await current_middleware(request, current_call_next)
+            finally:
+                request = cast("PokerlostMiddlewareRequest", None)
+                current_middleware = cast("PokerlostMiddleware", None)
+                current_call_next = cast("PokerlostCallNext[object]", None)
+
+        return wrapped
 
     async def __aenter__(self) -> Self:
         if self._context_stack is not None:
-            raise ClientStateError
+            raise PokerlostConfigurationError("PokerlostClient context is already active")
+        from .current_client import use_current_client
 
-        entry_stack = AsyncExitStack()
-        self._context_stack = entry_stack
+        stack = AsyncExitStack()
+        self._context_stack = stack
         try:
-            async with entry_stack:
-                await entry_stack.enter_async_context(self.storage)
-                await entry_stack.enter_async_context(self.session)
-                entry_stack.enter_context(use_current_client(self))
-                self._context_stack = entry_stack.pop_all()
+            async with stack:
+                await stack.enter_async_context(self._session)
+                stack.enter_context(use_current_client(self))
+                self._context_stack = stack.pop_all()
         except BaseException:
             self._context_stack = None
             raise
@@ -167,16 +208,7 @@ class Client:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        context_stack = self._context_stack
-        if context_stack is None:
-            return
-        try:
-            try:
-                async with context_stack:
-                    if exc_value is not None:
-                        raise exc_value.with_traceback(traceback)
-            except BaseException as propagated_error:
-                if propagated_error is not exc_value:
-                    raise
-        finally:
-            self._context_stack = None
+        stack = self._context_stack
+        self._context_stack = None
+        if stack is not None:
+            await stack.aclose()

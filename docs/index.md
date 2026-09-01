@@ -1,42 +1,36 @@
 # pypokerlost documentation
 
-Use this index to find setup instructions, architecture explanations, public API guidance, generator
-contracts, and maintainer workflows for `pypokerlost`.
+This index covers installation, public API, runtime architecture, generation, and maintenance for
+the body-only Pokerlost SDK.
 
 ## Getting started
 
-- `docs/getting-started/installation.md` — prepare the locked source environment or install
-  a locally built wheel.
-- `docs/getting-started/quickstart.md` — create a client and execute a typed method.
+- `docs/getting-started/installation.md` — prepare the locked environment or install a local wheel.
+- `docs/getting-started/quickstart.md` — make public and protected calls.
 
-## API
+## Public API
 
-- `docs/api/client.md` — client construction, execution, options, and lifecycle.
-- `docs/api/types.md`
-- `docs/api/methods.md`
-- `docs/api/transport.md` — request options, transport, envelope decoding, and Retry-After.
-- `docs/api/authorization-contracts.md` — shared scopes, token results, claims, and verified
-  authorization contexts.
-- `docs/api/retry.md` — the canonical explicit bounded transport retry policy.
-- `docs/api/storage.md`
-- `docs/api/api-server.md`
+- `docs/api/client.md` — client, options, targeting, lifecycle, and errors.
+- `docs/api/types.md` — canonical flat wire/value types.
+- `docs/api/methods.md` — method metadata, imports, and current stubs.
+- `docs/api/transport.md` — exact JSON envelopes and POST transport.
+- `docs/api/body-authorization.md` — body authorization, token lifecycle, and token store port.
+- `docs/api/retry.md` — explicit bounded retry and body delay handling.
+- `docs/api/api-server.md` — HTTPS target validation.
 
 ## Architecture
 
-- `docs/architecture/overview.md` — package ownership and the two canonical data flows.
-- `docs/architecture/client-lifecycle.md` — session/storage ownership, context, and
-  `Application`.
-- `docs/architecture/request-response-pipeline.md` — runtime execution
-  from method fields to a validated result.
-- `docs/architecture/types-and-methods.md` — immutable API objects, method contracts,
-  and client binding.
-- `docs/architecture/generator.md` — validation, rendering, and safe ownership.
+- `docs/architecture/overview.md` — ownership and primary flows.
+- `docs/architecture/client-lifecycle.md` — session and current-client lifecycle.
+- `docs/architecture/request-response-pipeline.md` — middleware-to-transport execution.
+- `docs/architecture/types-and-methods.md` — flat contracts and binding.
+- `docs/architecture/generator.md` — global preflight, rendering, and ownership.
 
 ## Generator
 
-- `docs/generator/contract.md`
-- `docs/generator/usage.md`
-- `docs/generator/generated-layout.md`
+- `docs/generator/contract.md` — accepted OpenAPI subset.
+- `docs/generator/usage.md` — actual CLI commands and scope-map input.
+- `docs/generator/generated-layout.md` — flat output and manifest ownership.
 
 ## Development
 
@@ -48,8 +42,7 @@ contracts, and maintainer workflows for `pypokerlost`.
 
 ## Project
 
-- `docs/project/status.md` — implemented runtime and generator surface.
-- `docs/project/non-goals.md` — service, authorization-policy, and business-idempotency boundaries.
+- `docs/project/status.md` — implemented runtime and future-facing stubs.
+- `docs/project/non-goals.md` — service and business boundaries.
 
-Normative product boundaries live in `SERVICE.md`. Contributors and coding agents must also follow
-`AGENTS.md`.
+Normative product boundaries live in `SERVICE.md`; repository rules live in `AGENTS.md`.

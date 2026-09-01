@@ -1,42 +1,41 @@
 # Python style
 
-Runtime and generator code use Python 3.14 syntax, Ruff formatting and linting, strict mypy, and
-Pydantic v2 validation.
+Runtime and generator code use Python 3.14 syntax, Ruff, strict mypy, and Pydantic v2 validation.
 
-## Language baseline
+## Language and typing
 
-Every Python source file contains exactly one `from __future__ import annotations` in its valid
-module position. Prefer PEP 695 type parameters and `type` aliases when Python 3.14 syntax can
-express the contract directly; do not introduce `Generic` or `TypeVar` for those cases.
+Every Python source contains one correctly placed `from __future__ import annotations`. Prefer PEP
+695 type parameters and aliases. Public functions, methods, properties, context managers, and
+stored collaborators use the narrowest truthful types.
 
-Public functions, methods, properties, context managers, and stored collaborators are typed. Use
-the narrowest truthful type, `collections.abc` contracts, and `Self` where appropriate. Keep `Any`
-contained at genuine dynamic boundaries.
+Use `collections.abc`, `Self`, and meaningful protocols. Callable aliases with deliberately open
+arguments use `Callable[..., ReturnT]`; meaningful call semantics remain a typed
+`Protocol.__call__`.
 
-## Formatting and static analysis
+Production validation and runtime invariants use Pydantic, boundary `ValueError`/`TypeError`, or
+canonical SDK exceptions rather than assertions.
 
-Ruff is authoritative for formatting, import order, and lint. The configured line length is 100
-characters and the Ruff target is `py314`. Mypy runs in strict mode against `pypokerlost/` and
-`scripts/` with the Pydantic plugin enabled.
+## Formatting
 
-Use explicit imports grouped as standard library, third-party, then `pypokerlost`. Wildcard imports
-and dependency-private imports are not accepted. Abstract classes use `import abc` with `abc.ABC`
-and `abc.abstractmethod`.
+Ruff owns formatting, imports, and lint with the repository's Python target and 100-character line
+length. Mypy runs strict mode over `pypokerlost/` and `scripts/` with the Pydantic plugin.
+
+Use explicit standard-library, third-party, then package imports. Avoid wildcard imports,
+dependency-private imports, and type-checking escapes that hide design problems.
 
 ## Naming
 
-Modules, functions, parameters, and attributes use lowercase `snake_case`. Product-prefixed class
-names use `Pokerlost` as one PascalCase word, while established technical acronyms retain their
-casing: `APIServer`, `HTTPMethod`, `JSONValue`, `OAuthScope`, and `APIOperation`. Preserve the
-external-library name `HttpxSession`.
+Modules, functions, parameters, and attributes use lowercase `snake_case`. Project-prefixed public
+classes use `Pokerlost`: `PokerlostClient`, `PokerlostAPIServer`, `PokerlostRequestOptions`,
+`PokerlostRetryPolicy`, `PokerlostScope`, and `PokerlostOperation`.
 
-## Pydantic models
+Operation values use single lowerCamelCase. Scope segments use lowerCamelCase within dotted scope
+values. The distribution/package name remains `pypokerlost`.
 
-Pydantic v2 owns validation and normalization of public or externally supplied data. Stable scalar
-invariants belong in named semantic types; related fields belong in focused models. Method payloads
-preserve omitted values versus explicit `None` and use JSON-mode model dumping.
+## Pydantic and secrets
 
-The complete normative rules are in `AGENTS.md`. Run the commands in
-`docs/development/commands.md` before handoff.
+Externally supplied data is validated at focused boundaries. Secret fields remain wire-serializable
+when required, but use repr hiding and `hide_input_in_errors`. Models reject impossible envelope,
+token, and authorization combinations explicitly.
 
-See `docs/index.md`.
+See `AGENTS.md`, `docs/development/commands.md`, and `docs/index.md`.

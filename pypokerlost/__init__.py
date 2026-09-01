@@ -1,29 +1,25 @@
-"""Public package facade for the PokerLost SDK."""
+"""Public package facade for the body-only Pokerlost SDK."""
 
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 
-from pypokerlost import exceptions
-from pypokerlost.application import Application
-from pypokerlost.client.client import Client
-from pypokerlost.client.response import Response
-from pypokerlost.exceptions import (
-    ApplicationStateError,
-    ClientConnectionError,
-    ClientContextError,
-    ClientDecodeError,
-    ClientError,
-    ClientRequestError,
-    ClientStateError,
-    ClientTimeoutError,
+from pypokerlost.application import PokerlostApplication
+from pypokerlost.client import PokerlostClient, PokerlostRequestOptions
+from pypokerlost.errors import (
     PokerlostAPIError,
+    PokerlostAuthenticationError,
+    PokerlostAuthorizationError,
+    PokerlostClientError,
+    PokerlostConfigurationError,
+    PokerlostConnectionError,
     PokerlostError,
     PokerlostProtocolError,
+    PokerlostTimeoutError,
 )
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.types import MutablePokerlostType, PokerlostType
+from pypokerlost.types import PokerlostResponse, PokerlostType
 
 try:
     __version__ = _distribution_version("pypokerlost")
@@ -31,23 +27,20 @@ except PackageNotFoundError:
     __version__ = "0+unknown"
 
 __all__ = (
-    "Application",
-    "ApplicationStateError",
-    "Client",
-    "ClientConnectionError",
-    "ClientContextError",
-    "ClientDecodeError",
-    "ClientError",
-    "ClientRequestError",
-    "ClientStateError",
-    "ClientTimeoutError",
-    "MutablePokerlostType",
     "PokerlostAPIError",
+    "PokerlostApplication",
+    "PokerlostAuthenticationError",
+    "PokerlostAuthorizationError",
+    "PokerlostClient",
+    "PokerlostClientError",
+    "PokerlostConfigurationError",
+    "PokerlostConnectionError",
     "PokerlostError",
     "PokerlostMethod",
     "PokerlostProtocolError",
+    "PokerlostRequestOptions",
+    "PokerlostResponse",
+    "PokerlostTimeoutError",
     "PokerlostType",
-    "Response",
     "__version__",
-    "exceptions",
 )

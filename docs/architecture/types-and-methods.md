@@ -1,90 +1,61 @@
 # Types and methods
 
-This page explains the distinct roles of typed API objects, mutable API objects, API methods, and
-their generated package layout.
+Methods describe operation calls; types describe reusable values and wire objects. Both namespaces
+are flat.
 
-## PokerlostType
-
-`PokerlostType` is the immutable Pydantic base for structured PokerLost API objects. Its model
-configuration allows unknown response fields for forward compatibility, uses enum values, validates
-defaults, supports field-name population, rejects non-finite numbers, and keeps public fields
-frozen.
-
-The model owns one private optional client binding. That binding is excluded from model fields,
-serialization, and the wire contract. It can be supplied explicitly with `.as_(client)` or through
-Pydantic validation context.
-
-`MutablePokerlostType` is the deliberate mutable subtype. It changes only the frozen setting; it
-retains the same API-object validation and client-binding behavior.
-
-## PokerlostMethod
-
-`PokerlostMethod[ResultT]` is the single API method base. It inherits client resolution from
-`PokerlostType` but overrides request-facing configuration to be strict and extra-forbid. Concrete
-methods declare only:
-
-- request fields;
-- `__api_method__`, the exact two-segment `namespace.someOperation` API operation;
-- `__http_method__`, which defaults to `"POST"`;
-- `__returning__`, the declared result type.
-
-The operation is the full operation identity. Methods carry no service-routing metadata and do not
-create endpoint-specific `Client` methods.
-
-The tracked authService package contains `OAuthTokenMethod`. The following remains an illustration
-of the shape generated for another structured result:
+## Method contract
 
 ```python
-from pypokerlost import PokerlostMethod, PokerlostType
+from pypokerlost import PokerlostMethod
+from pypokerlost.types import PokerlostOperation, PokerlostScope
 
 
-class AccountResult(PokerlostType):
-    account_id: int
+class GetBalance(PokerlostMethod[int]):
+    operation = PokerlostOperation("getBalance")
+    required_scopes = (PokerlostScope("accounts.self.read"),)
+    returning = int
 
-
-class GetAccountMethod(PokerlostMethod[AccountResult]):
-    __api_method__ = "support.getAccount"
-    __returning__ = AccountResult
-
-    account_id: int
+    account_id: str
 ```
 
-See `docs/api/methods.md` for invocation forms.
+The class name has no redundant suffix. The operation is independent of the required scope. Empty
+`required_scopes` means public at the transport layer; a non-empty tuple means body authorization
+is mandatory.
 
-## Generated placement
-
-One service generation keeps request contracts separate from returned and nested data objects:
+## Flat layout
 
 ```text
 pypokerlost/
 ├── methods/
-│   └── <service_package>/
-│       └── ... request method modules
+│   ├── get_token.py
+│   ├── refresh_token.py
+│   └── get_balance.py
 └── types/
-    └── <service_package>/
-        └── ... API object and alias modules
+    ├── pokerlost_response.py
+    ├── pokerlost_token.py
+    └── account_response.py
 ```
 
-Generated method modules import `PokerlostMethod` from `pypokerlost.methods`. Generated API object
-modules import `PokerlostType` from `pypokerlost.types`. A declared result may be a structured API
-object, a scalar, a collection, or a generated alias supported by Pydantic validation.
+Service directories and shared-contract forwarding packages are not part of the layout. Focused
+facades expose public names from `pypokerlost.methods` and `pypokerlost.types`.
 
-## Binding and execution
+## Typed values
 
-There are two distinct binding paths:
+`PokerlostType` is the immutable API-object base with optional private client binding.
+`MutablePokerlostType` is its explicit mutable variant. Canonical request, response, token, scope,
+authorization, credentials, context, and claims models are focused flat types rather than
+`PokerlostType` compatibility objects.
 
-- `.as_(client)` mutates only the private binding on that exact object and returns it;
-- `client(method)` and `client.make_request(method)` execute a copied method bound to that client.
+Secret-bearing wire fields remain serializable but are hidden from repr and validation input
+output. Models are strict, frozen where appropriate, validate defaults, and reject unknown fields.
 
-Therefore an unbound method remains reusable after explicit client execution. Awaiting a method
-directly calls `resolve_client()`, which prefers its explicit or validation-context binding and then
-the task-local current client. Without either, it raises `ClientContextError`.
+## Binding
 
-`ResponseHandler` validates `__returning__` with the executing method's client in Pydantic context.
-Pydantic propagates that context through nested typed models, allowing returned `PokerlostType`
-objects to resolve the same client without serializing it.
+`await client(method)` executes a copied method bound to that client. `await method.emit(client)` is
+the explicit method form. Direct `await method` resolves an explicitly bound client first, then the
+task-local current client, and otherwise raises a configuration error.
 
-See `docs/api/types.md` for public semantic aliases and `docs/architecture/client-lifecycle.md` for
-task-local context ownership.
+Result validation passes the executing client through Pydantic context so nested `PokerlostType`
+objects can resolve the same client without serializing it.
 
-See `docs/index.md`.
+See `docs/api/methods.md`, `docs/api/types.md`, and `docs/index.md`.

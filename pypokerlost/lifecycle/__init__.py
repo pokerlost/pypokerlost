@@ -1,7 +1,13 @@
-"""Application lifecycle primitives."""
+"""Pokerlost application lifecycle primitives."""
 
 from __future__ import annotations
 
-from .application_lifecycle import ApplicationLifecycle, default_application_lifecycle
+from .application_lifecycle import (
+    PokerlostApplicationLifecycle,
+    default_pokerlost_application_lifecycle,
+)
 
-__all__ = ("ApplicationLifecycle", "default_application_lifecycle")
+__all__ = (
+    "PokerlostApplicationLifecycle",
+    "default_pokerlost_application_lifecycle",
+)

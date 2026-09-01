@@ -1,41 +1,39 @@
 # Project status
 
-`pypokerlost` currently provides the typed asynchronous HTTP API operation foundation and
-development-time generation tooling shared by PokerLost service consumers.
+`pypokerlost` implements the body-only Pokerlost SDK foundation and flat OpenAPI generator.
 
 ## Implemented surface
 
-| Area | Status | Current behavior |
-|---|---|---|
-| Typed HTTP API operation | Implemented | Strict method requests produce validated typed results through the fixed PokerLost envelope. |
-| Client and session | Implemented | `Client` owns one restartable asynchronous session and the request/response pipeline. |
-| Client lifecycle | Implemented | Async context management and `Application` coordinate session, storage, and current-client context. |
-| Generic headers and form requests | Implemented | Immutable secret-safe headers and generated JSON/form metadata use one transport path. |
-| Shared authorization contracts | Implemented | Scopes, token results, claims, principal enums, and verified contexts have one data-only owner. |
-| Bounded retry | Implemented | One fixed policy is disabled by default and enabled only by explicit per-call opt-in. |
-| Storage | Implemented | `MemoryStorage` provides process-local JSON-compatible values with optional TTL. |
-| OpenAPI generator | Implemented | OpenAPI 3.1 JSON can generate deterministic method and type packages with manifest v2 ownership. |
-| Generated layout split | Implemented | Requests live under `pypokerlost.methods`; returned and nested API objects live under `pypokerlost.types`. |
-| Concrete service packages | Not shipped here | Services generate or maintain their own method and type packages. |
+| Area | Current behavior |
+| --- | --- |
+| Client/session | `PokerlostClient` owns one restartable async session and current-client context. |
+| Request protocol | Public and protected JSON envelopes; every business call uses POST. |
+| Response protocol | One five-field `PokerlostResponse` for every normal status. |
+| Authorization middleware | Exact-scope reuse, acquisition, refresh, single-flight, body injection, and invalidation. |
+| Token store | Behavior-only consumer port with audience and exact-scope key semantics. |
+| Retry middleware | Fixed bounded policy, explicit per-call opt-in, and body delay support. |
+| Errors | Small canonical secret-safe client hierarchy. |
+| Methods/types | Flat modules and flat public facades. |
+| Generator | Multi-document global preflight, flat output, explicit scope map, and manifest v3. |
+| Lifecycle | Async client context plus `PokerlostApplication` async/synchronous entrypoints. |
 
-The current SDK package version is `0.2.0`; the current generator version is `1.2.1`.
+The SDK package version is `0.2.0`; the generator version is `2.0.0`.
 
-## Not implemented in the core
+## Auth method status
 
-The core has no WebSocket or event API, authorization policy, token-issuing service, credential or
-token lifecycle orchestration, automatic service discovery or routing, globally enabled retry,
-automatic `401`/`403` replay, endpoint-specific client facade, bundled external storage backend, or
-alternative transport protocol. Concrete service methods appear only as generated output.
+`GetToken` matches the currently implemented authService operation. `RefreshToken`, `GetJwks`,
+`ProvisionHuman`, `SetPrincipalStatus`, `AssignPrincipalRole`, and `IssueLoginGrant` are typed
+future-facing SDK stubs. They make ordinary network calls and do not simulate absent server
+behavior.
 
-The SDK does not persist business idempotency, workflow, outbox, or reconciliation state. Consumer
-services decide which calls are replay-safe and keep database transactions outside remote I/O and
-retry backoff.
+## Not implemented here
 
-The repository provides static analysis and artifact-build tooling but currently contains no test
-suite, CI workflow, or package publishing automation. These statements describe repository state,
-not a speculative roadmap.
+The SDK has no production token-store backend, service verifier, credential loader, token signer,
+key fetcher, route policy, database integration, alternate wire protocol, automatic authentication
+replay, service discovery, background worker, or deployment framework.
 
-See `docs/project/non-goals.md` for the intentional boundary and `SERVICE.md` for the product
-definition.
+The repository provides static checks and artifact builds. Service contract generation and
+cross-repository scope comparison are performed against the relevant service OpenAPI and route
+sources.
 
-See `docs/index.md`.
+See `docs/project/non-goals.md`, `SERVICE.md`, and `docs/index.md`.

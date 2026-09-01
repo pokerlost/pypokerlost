@@ -1,4 +1,4 @@
-"""Task-local current-client state."""
+"""Task-local Pokerlost client context."""
 
 from __future__ import annotations
 
@@ -7,30 +7,27 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
-from pypokerlost.exceptions import ClientContextError
+from pypokerlost.errors import PokerlostConfigurationError
 
 if TYPE_CHECKING:
-    from pypokerlost.client.client import Client
+    from .client import PokerlostClient
 
-
-_current_client: ContextVar[Client | None] = ContextVar(
+_current_client: ContextVar[PokerlostClient | None] = ContextVar(
     "pypokerlost_current_client",
     default=None,
 )
 
 
-def get_current_client() -> Client:
-    """Return the client installed in the current task context."""
+def get_current_client() -> PokerlostClient:
     client = _current_client.get()
     if client is None:
-        raise ClientContextError
+        raise PokerlostConfigurationError("No PokerlostClient is active in this task")
     return client
 
 
 @contextmanager
-def use_current_client(client: Client) -> Iterator[Client]:
-    """Install a client temporarily and restore the exact previous context."""
-    token: Token[Client | None] = _current_client.set(client)
+def use_current_client(client: PokerlostClient) -> Iterator[PokerlostClient]:
+    token: Token[PokerlostClient | None] = _current_client.set(client)
     try:
         yield client
     finally:

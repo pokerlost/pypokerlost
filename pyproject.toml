@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pypokerlost"
 version = "0.2.0"
-description = "Asynchronous Python SDK foundation for PokerLost services"
+description = "Asynchronous Python SDK for the body-only Pokerlost JSON protocol"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -15,7 +15,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "aiofiles>=24.1.0,<25",
     "mypy>=2.3,<3",
     "pre-commit>=4.6.2,<5",
     "ruff>=0.16.4,<1",
@@ -42,7 +41,3 @@ files = ["pypokerlost", "scripts"]
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
-
-[[tool.mypy.overrides]]
-module = ["aiofiles", "aiofiles.*"]
-ignore_missing_imports = true

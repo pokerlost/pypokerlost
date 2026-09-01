@@ -1,67 +1,71 @@
 # Quickstart
 
-Create an asynchronous `Client`, point its `HttpxSession` at a PokerLost HTTP API, and execute one
-typed `PokerlostMethod`.
+Create a target-specific `PokerlostClient` and execute one typed body-only method.
 
-## Minimal call
-
-The repository tracks `pypokerlost.methods.auth_service.OAuthTokenMethod` from the authService
-OpenAPI contract. `ExampleResult` and `ExampleMethod` below illustrate the same generated base
-shape for a simple JSON operation; every import in the example is a real public SDK import.
+## Public token call
 
 ```python
 from __future__ import annotations
 
 import asyncio
 
-from pypokerlost import Client, PokerlostMethod, PokerlostType
-from pypokerlost.client.api_server import APIServer
-from pypokerlost.client.session import HttpxSession
-
-
-class ExampleResult(PokerlostType):
-    message: str
-
-
-class ExampleMethod(PokerlostMethod[ExampleResult]):
-    __api_method__ = "echo.sendMessage"
-    __returning__ = ExampleResult
-
-    message: str
+from pypokerlost import PokerlostClient
+from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.methods import GetToken
+from pypokerlost.session import HttpxSession
 
 
 async def main() -> None:
-    api_server = APIServer.from_base("http://127.0.0.1:8000")
-    session = HttpxSession(api_server=api_server)
-
-    async with Client(session=session) as client:
-        result = await client(ExampleMethod(message="Hello"))
-        print(result.message)
+    auth_session = HttpxSession(
+        api_server=PokerlostAPIServer("https://auth.example.internal"),
+    )
+    async with PokerlostClient(session=auth_session) as auth_client:
+        token = await auth_client(
+            GetToken(
+                client_id="service-client-id",
+                client_secret="loaded-by-the-consumer",
+                scopes=("accounts.self.read",),
+                audience="accountsService",
+            )
+        )
+        print(token.expires_in)
 
 
 asyncio.run(main())
 ```
 
-`APIServer.from_base()` appends the API operation to the base URL, so this example sends the
-request to `http://127.0.0.1:8000/echo.sendMessage`. The endpoint must return the fixed PokerLost
-JSON envelope, and the successful `result` must match `ExampleResult`.
+The call sends `POST /getToken` with a `PokerlostRequest` JSON body. Credentials are fields inside
+`payload`; the project creates no authentication header or form body.
 
-This minimal call makes one transport attempt. A service-owned adapter may add an already-resolved
-authorization value through generic `RequestOptions` headers. Retry remains disabled until a
-replay-safe call explicitly passes `RequestOptions(retry=PokerLostRetryPolicy())`; see
-`docs/api/retry.md`.
+## Protected client composition
 
-## Generated service packages
+The consumer provides a `PokerlostTokenStore` implementation and loads its credentials outside the
+SDK:
 
-For a generated service, replace the illustrative classes with the service package exports. The
-generator keeps request methods and returned API objects in separate namespaces:
+```python
+from pypokerlost import PokerlostClient
+from pypokerlost.middleware import PokerlostAuthorizationMiddleware
+from pypokerlost.types import PokerlostClientCredentials
 
-```text
-pypokerlost/methods/<service_package>/  request method classes
-pypokerlost/types/<service_package>/    returned and nested API object types
+authorization = PokerlostAuthorizationMiddleware(
+    auth_client=auth_client,
+    token_store=token_store,
+    credentials=PokerlostClientCredentials(
+        client_id=client_id,
+        client_secret=client_secret,
+    ),
+    audience="accountsService",
+)
+business_client = PokerlostClient(
+    session=business_session,
+    middleware=(authorization,),
+)
 ```
 
-`docs/generator/usage.md` describes contract acquisition and commands. `docs/api/methods.md` covers
-explicit binding and implicit current-client execution.
+The middleware reads exact scopes from each method. Public calls bypass it. Protected calls acquire
+or reuse a token and send it only in `authorization.access_token` inside the JSON body.
 
-See `docs/index.md`.
+Retry remains disabled until one call passes a `PokerlostRequestOptions` containing
+`PokerlostRetryPolicy()`.
+
+See `docs/api/body-authorization.md`, `docs/api/retry.md`, and `docs/index.md`.

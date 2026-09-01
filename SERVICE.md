@@ -1,48 +1,64 @@
 # pypokerlost
 
-`pypokerlost` is the typed asynchronous Python SDK shared by PokerLost services.
+`pypokerlost` is the typed asynchronous SDK for the private Pokerlost JSON protocol over HTTPS.
 
 ## Purpose
 
-Provide one canonical Python interface for describing and executing typed PokerLost API operation
-calls while keeping service business rules outside the SDK.
+Provide one small Python interface for typed Pokerlost operation calls, canonical request and
+response envelopes, body-only token coordination, bounded opt-in retry, and OpenAPI-to-SDK
+generation while keeping service business policy outside the package.
 
 ## Responsibilities
 
-- Own the reusable `Client`, session, request, and response pipeline.
-- Own `PokerlostType` and `MutablePokerlostType` as bases for typed API objects.
-- Own `PokerlostMethod` and the conventions for generated request methods and result types.
-- Own generic immutable per-call request headers and client-local JSON-compatible storage
-  abstractions.
-- Own shared cross-service authorization wire/value contracts without lifecycle behavior.
-- Own one explicit bounded transport retry policy that remains disabled without per-call opt-in.
-- Own application lifecycle coordination around one client.
-- Own development-time OpenAPI-to-SDK generation tooling.
+- Own `PokerlostClient`, session targeting, JSON POST transport, response decoding, and canonical
+  safe errors.
+- Own flat typed methods and flat wire/value models.
+- Own `PokerlostRequest`, `PokerlostAuthorizedRequest`, and `PokerlostResponse`.
+- Own exact operation and scope validation.
+- Own the retry and authorization middleware pipeline.
+- Own the behavior-only `PokerlostTokenStore` port and monotonic token state.
+- Own public body-only `GetToken` and `RefreshToken` calls plus explicitly documented
+  future-facing auth method stubs.
+- Own development-time generation from one or more OpenAPI 3.1 JSON documents.
+- Coordinate one client lifecycle through `PokerlostApplication`.
 
-## Service-specific rules
+## Protocol rules
 
-- Public API objects inherit `PokerlostType`; deliberately mutable objects inherit
-  `MutablePokerlostType`.
-- API method objects inherit `PokerlostMethod` and declare the operation, HTTP method, and result
-  type.
-- Generated request methods live under `pypokerlost.methods.<service_package>`.
-- Generated returned and nested API objects live under `pypokerlost.types.<service_package>`.
-- Transport request, response, session, and API-target mechanics live under `pypokerlost.client`.
-- The operation string is the full operation identity; the SDK does not route by service metadata.
-- Every operation string has exactly the `namespace.someOperation` shape: one dot, lowercase ASCII
-  initials, and ASCII letters or digits in both segments.
-- The fixed response envelope contains `ok`, `result`, `error`, and `error_message`.
-- A client owns one session and one storage backend.
-- The standard PokerLost response envelope also wraps `/oauth.token`; its generated method uses
-  generic form request serialization and caller-supplied headers.
+- Every business operation is `POST /<operationId>` with one JSON request and one JSON response.
+- A public operation sends only `{"payload": ...}`.
+- A protected operation sends `{"authorization": {"access_token": ...}, "payload": ...}`.
+- Token acquisition and refresh secrets exist only inside their JSON payloads.
+- Project-owned code has no caller-facing or internal generic HTTP-header API.
+- The response body is always `PokerlostResponse[ResultT]`; retry delay is its `retry_after` field.
+- Production API targets use HTTPS. Loopback HTTP exists only for local development.
+- This transport is private to Pokerlost and is not a standards-compatible OAuth2 wire protocol.
 
-## Boundaries
+## Authorization and retry boundaries
 
-The SDK does not own PokerLost service business logic, direct database access, accounts or
-authentication service implementations, token acquisition or lifecycle orchestration, token
-issuance, authorization decisions, service credentials, service discovery, service routing,
-business idempotency or reconciliation, streaming, WebSocket/events, or multiple transport
-protocols.
+- Method `required_scopes` is the exact outbound scope request; public methods use an empty tuple.
+- `PokerlostAuthorizationMiddleware` coordinates token reuse, acquisition, refresh, single-flight
+  locking, storage calls, and body injection.
+- Consumers supply credentials, audience, and a `PokerlostTokenStore` implementation.
+- The SDK does not ship production token persistence, credential loading, token signing, local
+  verification, JWKS policy, role expansion, or service authorization decisions.
+- Authentication failure invalidates state for a later independent call; the failed call is not
+  replayed. Insufficient scope does not trigger refresh.
+- Retry is explicit per logical call through `PokerlostRequestOptions.retry_policy`.
+- Retry never creates or changes business operation IDs and never establishes mutation safety.
 
-Concrete service methods and API object types are generated or maintained by service consumers;
-the core repository intentionally ships none.
+## Generator boundary
+
+- Generated method and type files are flat and globally named across every input document.
+- Generation validates all supplied documents before writing and fails on global name collisions.
+- Exact protected scopes are supplied outside OpenAPI or retained from an existing hand-written
+  method.
+- OpenAPI body schemas show the access-token field but cannot express exact body-token scopes with
+  a standard security scheme.
+- Manual SDK stubs call ordinary endpoints when those endpoints exist; they never return synthetic
+  results and do not imply server implementation.
+
+## Non-responsibilities
+
+The SDK does not own service databases, domain workflows, account or authentication server
+implementations, production token storage, credentials, JWT signing or verification, background
+workers, gateways, service discovery, business idempotency, reconciliation, or deployment policy.

@@ -1,76 +1,71 @@
 # Architecture overview
 
-`pypokerlost` owns generic typed PokerLost transport, generated method and API-object conventions,
-shared cross-service wire/value contracts, canonical transport exceptions, and one explicit retry
-policy. Service business logic and token lifecycle orchestration stay outside the SDK.
+`pypokerlost` owns one private JSON operation-call protocol, one typed client pipeline, flat methods
+and types, canonical errors, authorization middleware, retry middleware, and development-time
+OpenAPI generation.
 
 ## Runtime flow
 
 ```text
-generated PokerlostMethod
-→ Client method snapshot
-→ RequestBuilder metadata and request construction
-→ optional PokerLostRetryPolicy executor
-→ HttpxSession transport
-→ ResponseHandler
-→ Response result validation
+PokerlostMethod
+→ PokerlostClient
+→ PokerlostRetryMiddleware
+→ PokerlostAuthorizationMiddleware, when configured
+→ PokerlostRequestBuilder
+→ HttpxSession POST JSON transport
+→ PokerlostResponse decoder
+→ typed result or canonical error
 ```
 
-`Client` validates and captures the operation, HTTP method, request content type, and declared result
-type once. It reuses the same deep method snapshot for every transport attempt. `RequestOptions`
-contains only immutable generic headers and an optional canonical retry policy.
-
-`RequestBuilder` produces a transport-independent frozen request. `HttpxSession` owns the target
-URL, JSON or form serialization, UTF-8 bytes, HTTPX lifecycle and I/O, `Retry-After` parsing, and
-response decoding. `ResponseHandler` preserves the fixed `ok`, `result`, `error`, and
-`error_message` envelope.
+The client always installs the retry layer outermost. Its policy remains inactive unless the call
+provides `PokerlostRequestOptions.retry_policy`. Authorization is inside retry so every attempt can
+obtain current token state without replaying an authentication failure.
 
 ## Runtime ownership
 
 | Owner | Responsibility |
-|---|---|
-| `PokerlostMethod` | Strict request fields and immutable transport metadata. |
-| `Client` | Method snapshot, session/storage ownership, direct retry entry, and task-local context. |
-| `RequestOptions` | Secret-safe immutable caller headers and optional retry opt-in. |
-| `RequestBuilder` | Metadata validation, request data, authoritative media type, and headers. |
-| `PokerLostRetryPolicy` | Fixed bounded transport attempt classification and delays. |
-| `HttpxSession` | API target, serialization, HTTP resources and I/O. |
-| `ResponseHandler` | Envelope decoding, canonical errors, and declared result validation. |
-| `contracts.authorization` | Shared token, claims, principal, and verified-context data shapes. |
-| `Application` | One client lifecycle and optional caller lifecycle. |
+| --- | --- |
+| `PokerlostMethod` | Strict payload fields, operation, exact required scopes, and result type. |
+| `PokerlostClient` | Session ownership, request preparation, middleware composition, and context. |
+| `PokerlostRequestOptions` | Optional per-call retry policy only. |
+| `PokerlostAuthorizationMiddleware` | Token reuse, acquisition, refresh, storage coordination, and body injection. |
+| `PokerlostRetryMiddleware` | Bounded opt-in retry from canonical exceptions. |
+| `PokerlostRequestBuilder` | Public request envelope plus private call metadata binding. |
+| `HttpxSession` | HTTPS target, POST JSON I/O, decoding, and result validation. |
+| `PokerlostResponse` | The only response envelope. |
+| `PokerlostApplication` | One client lifecycle and one synchronous entrypoint. |
 
-## Authorization boundary
+## Public and protected calls
 
-The SDK knows the wire shape of `OAuthTokenResponse`, decoded access-token claims, verified
-authorization contexts, exact scope identifiers, and generated `oauth.token` transport metadata.
-It does not decide when a token is needed, own credentials, orchestrate token lifecycle state, sign
-or verify JWTs, fetch keys, expand roles, or make authorization decisions.
+A public method has `required_scopes = ()`. It bypasses token storage and reaches transport as
+`PokerlostRequest`. A protected method lists exact `PokerlostScope` values. Without authorization
+middleware it fails locally; with middleware it reaches transport as `PokerlostAuthorizedRequest`.
 
-A consuming service owns this direction:
+Token acquisition and refresh are ordinary public calls through a dedicated auth-target client.
+The dedicated client cannot contain authorization middleware, which prevents recursion.
 
-```text
-application handler
-→ service-owned application port
-→ service-owned pypokerlost adapter
-→ generated oauth.token method
-```
+## Protocol boundary
+
+Business calls use `POST /<operationId>` and JSON bodies. Operation IDs are single lowerCamelCase
+verbs; scope IDs are independent dotted lowerCamelCase strings. Project code does not provide a
+generic HTTP metadata channel. Production targets require HTTPS.
+
+The service side verifies access tokens locally through its own verifier adapter. The SDK does not
+sign tokens, fetch keys, load credentials, decide roles, or provide production token persistence.
 
 ## Generator flow
 
 ```text
-OpenAPI 3.1 JSON
-→ standard paths/requestBody/responses/components
-→ exact shared-schema reuse
-→ methods/<service>/ and types/<service>/
+one or more OpenAPI 3.1 JSON documents
+→ global operation and schema preflight
+→ canonical envelope validation
+→ explicit scope resolution
+→ flat method/type rendering
+→ manifest-safe write or check
 ```
 
-The only required project extension is top-level `x-pokerlost-service.id`. The generator uses no
-route-level custom metadata. See `docs/architecture/generator.md`.
-
-## Dependency direction
-
-Request, response, and session modules do not import `Client`. Shared contracts do not import
-transport. The generator is development tooling and imports only stable public runtime contracts.
-Storage remains a client-owned sibling of transport.
+OpenAPI shows body authorization through the request schema. Exact protected scopes remain in
+route source and SDK method metadata because standard security schemes do not describe this private
+body-token contract.
 
 See `docs/index.md`.

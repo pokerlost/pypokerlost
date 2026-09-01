@@ -1,53 +1,103 @@
-# Transport objects
+# Body-only transport
 
-## Public imports
+Every Pokerlost business operation is `POST /<operationId>` with JSON input and a
+`PokerlostResponse` JSON output. The operation ID is a single lowerCamelCase verb name.
 
-```python
-from pypokerlost.client.request import Request, RequestBuilder, RequestOptions
-from pypokerlost.client.response import BaseResponseHandler, Response, ResponseHandler
-from pypokerlost.client.retry import PokerLostRetryPolicy
-from pypokerlost.client.session import DEFAULT_TIMEOUT, BaseSession, HttpxSession
+## Public call
+
+```json
+{
+  "payload": {
+    "username": "alice"
+  }
+}
 ```
 
-## Request and options
+The exact model is `PokerlostRequest[PayloadT]`.
 
-`Request` is a frozen strict model containing:
+## Protected call
 
-```text
-method: APIOperation
-http_method: HTTPMethod
-content_type: HTTPRequestContentType
-data: dict[str, JSONValue]
-headers: tuple[tuple[str, str], ...]
+```json
+{
+  "authorization": {
+    "access_token": "<secret>"
+  },
+  "payload": {
+    "account_id": "7f864ce5-a4f0-4ff1-b5b7-bd958a961447"
+  }
+}
 ```
 
-Data and headers are hidden from repr. Headers are also excluded from ordinary serialization.
+The exact model is `PokerlostAuthorizedRequest[PayloadT]`. The token has no prefix and exists in no
+other request location.
 
-`RequestOptions` contains immutable case-insensitively unique headers and
-`PokerLostRetryPolicy | None`. Use `with_headers()` to return a new value while preserving other
-headers and retry opt-in. Header values admit HTTP field content but reject CR and LF. Caller-owned
-collections cannot mutate constructed options.
+## Token acquisition
 
-The generated request media type is authoritative. The current supported values are standard JSON
-and form encoding; a per-call `Content-Type` replacement is rejected.
+`GetToken` sends:
 
-## Session
+```json
+{
+  "payload": {
+    "client_id": "service-client-id",
+    "client_secret": "<secret>",
+    "scopes": [
+      "auth.internal.provisionHuman"
+    ],
+    "audience": "authService"
+  }
+}
+```
 
-`BaseSession` owns timeout resolution, one `RequestBuilder`, and one `BaseResponseHandler`.
-`HttpxSession` adds an `APIServer`, JSON codecs, deterministic generic form encoding, one
-restartable `httpx.AsyncClient`, HTTP I/O, and safe `Retry-After` parsing.
+`RefreshToken` sends:
 
-JSON payloads use the configured encoder and UTF-8. Form payloads accept only the generator's
-validated string or flat string-array request shape and use UTF-8 URL encoding. There is no
-operation-specific transport method.
+```json
+{
+  "payload": {
+    "refresh_token": "<secret>",
+    "scopes": null,
+    "audience": "accountsService"
+  }
+}
+```
 
-Timeout, connection, local request, protocol, API, and decode failures retain their established
-canonical exception classes. Public failures include safe operation/status metadata only.
+Both methods are public at the transport layer. Refresh does not require an access token.
 
-## Response
+## Success response
 
-`Response[ResultT]` is the fixed strict PokerLost envelope. `ResponseHandler` decodes JSON,
-validates envelope invariants, maps canonical exceptions, and validates the declared result with
-the executing client's Pydantic context.
+```json
+{
+  "ok": true,
+  "result": {
+    "account_id": "7f864ce5-a4f0-4ff1-b5b7-bd958a961447"
+  },
+  "error": null,
+  "error_message": null,
+  "retry_after": null
+}
+```
 
-See `docs/architecture/request-response-pipeline.md` and `docs/index.md`.
+## Retryable failure
+
+```json
+{
+  "ok": false,
+  "result": null,
+  "error": "SERVICE_TEMPORARILY_UNAVAILABLE",
+  "error_message": "Try again later.",
+  "retry_after": 1.5
+}
+```
+
+Success requires `result` or null and no failure metadata. Failure requires a stable error code,
+requires `result=null`, and may contain a sanitized message and body retry delay.
+
+## HTTP boundary
+
+HTTPX's `json=` call supplies the media framing. Project code does not construct or accept generic
+header mappings, authentication headers, content negotiation, cookie authentication, query tokens,
+or form bodies. Normal response data is decoded from the body for both 2xx and non-2xx statuses.
+
+`HttpxSession(*, api_server=..., timeout=10.0)` requires a positive attempt timeout. Production
+targets require HTTPS; loopback development may use HTTP.
+
+See `docs/api/client.md`, `docs/api/body-authorization.md`, and `docs/index.md`.

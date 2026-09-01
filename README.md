@@ -1,10 +1,10 @@
 # pypokerlost
 
-Typed asynchronous Python SDK for PokerLost API operations.
+Typed asynchronous Python SDK for Pokerlost's private body-only JSON protocol over HTTPS.
 
-The SDK provides typed generated methods, shared cross-service authorization data contracts,
-generic HTTP transport, explicit per-call bounded retry, and the universal PokerLost response
-envelope. Consuming services own credentials and token lifecycle orchestration.
+The SDK provides flat typed methods and types, one response envelope, body-only authorization,
+middleware-based retry, and OpenAPI generation. It does not expose caller-supplied HTTP headers or
+claim compatibility with a standard token wire protocol.
 
 ## Requirements
 
@@ -13,68 +13,50 @@ envelope. Consuming services own credentials and token lifecycle orchestration.
 
 ## Installation
 
-The repository currently documents source development rather than a public package-index release.
-From an existing checkout, create the locked development environment:
-
 ```bash
 uv sync --locked --all-groups
 ```
 
-Build an installable wheel and source distribution with `uv build`. See
-`docs/getting-started/installation.md` for the supported source and local-wheel flows.
+Build local distributions with `uv build`. See `docs/getting-started/installation.md`.
 
-## Quick example
-
-The repository tracks the generated authService method at
-`pypokerlost.methods.auth_service.OAuthTokenMethod`. This small custom method illustrates the same
-public base API for another service contract:
+## Public call
 
 ```python
-from pypokerlost import Client, PokerlostMethod, PokerlostType
+from pypokerlost import PokerlostClient
+from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.methods import GetToken
+from pypokerlost.session import HttpxSession
 
 
-class HealthResult(PokerlostType):
-    status: str
-
-
-class HealthMethod(PokerlostMethod[HealthResult]):
-    __api_method__ = "health.get"
-    __returning__ = HealthResult
-
-
-async def read_health() -> HealthResult:
-    async with Client() as client:
-        return await client(HealthMethod())
+async def get_service_token() -> None:
+    session = HttpxSession(
+        api_server=PokerlostAPIServer("https://auth.example.internal"),
+    )
+    async with PokerlostClient(session=session) as client:
+        token = await client(
+            GetToken(
+                client_id="service-client-id",
+                client_secret="loaded-by-the-consumer",
+                scopes=("accounts.self.read",),
+                audience="accountsService",
+            )
+        )
+        print(token.expires_in)
 ```
 
-Generated request methods are imported from `pypokerlost.methods.<service_package>`; their returned
-and nested API objects are imported from `pypokerlost.types.<service_package>`.
-
-The runtime keeps typed methods, transport requests, response validation, and generated API
-objects in separate layers. See `docs/architecture/overview.md`.
-
-Service consumers compose one target-specific client for each real target and own it in their
-application lifespan. Retry is disabled unless a replay-safe call supplies
-`RequestOptions(retry=PokerLostRetryPolicy())`; callers add any already-resolved credentials through
-generic immutable request headers.
+`GetToken` is public at the transport layer and sends credentials inside
+`PokerlostRequest.payload`. Protected methods require `PokerlostAuthorizationMiddleware`, which
+places the access token only in `PokerlostAuthorizedRequest.authorization.access_token`.
 
 ## Documentation
 
 - `docs/index.md`
 - `docs/getting-started/quickstart.md`
-- `docs/architecture/overview.md`
 - `docs/api/client.md`
-- `docs/api/authorization-contracts.md`
+- `docs/api/transport.md`
+- `docs/api/body-authorization.md`
 - `docs/api/retry.md`
 - `docs/generator/usage.md`
-- `docs/development/commands.md`
+- `docs/project/status.md`
 
-## Development
-
-Run the regular non-mutating repository gate from the project root:
-
-```bash
-make check
-```
-
-Use `make check-full` before a release or cross-repository handoff.
+Run `make check` for the regular repository gate and `make check-full` before a release handoff.

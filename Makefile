@@ -43,7 +43,9 @@ generator-check: ## Verify that the generator imports and reports its version.
 	$(UV) run --locked python scripts/generate_methods.py --version
 
 import-check: ## Import the canonical public SDK foundation.
-	$(UV) run --locked python -c "from pypokerlost import Client, PokerlostMethod; from pypokerlost.types import APIOperation; print(Client.__name__, PokerlostMethod.__name__, APIOperation)"
+	$(UV) run --locked python -c "from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions; print(PokerlostClient.__name__, PokerlostMethod.__name__, PokerlostRequestOptions.__name__)"
+	$(UV) run --locked python -c "from pypokerlost.methods import GetToken, RefreshToken; from pypokerlost.middleware import PokerlostAuthorizationMiddleware, PokerlostRetryMiddleware, PokerlostRetryPolicy; print(GetToken.__name__, RefreshToken.__name__, PokerlostAuthorizationMiddleware.__name__, PokerlostRetryMiddleware.__name__, PokerlostRetryPolicy.__name__)"
+	$(UV) run --locked python -c "from pypokerlost.types import PokerlostAuthorizedRequest, PokerlostOperation, PokerlostRequest, PokerlostResponse, PokerlostScope, PokerlostToken; print(PokerlostAuthorizedRequest.__name__, PokerlostOperation.__name__, PokerlostRequest.__name__, PokerlostResponse.__name__, PokerlostScope.__name__, PokerlostToken.__name__)"
 
 pre-commit: ## Run every configured hook against all files.
 	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure

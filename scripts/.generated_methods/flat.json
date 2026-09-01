@@ -1,0 +1,20 @@
+{
+  "files": [
+    "methods/__init__.py",
+    "types/__init__.py"
+  ],
+  "generator_version": "2.0.0",
+  "manifest_version": 3,
+  "sources": [
+    {
+      "openapi_version": "0.1.0",
+      "source_sha256": "7dc15fc01ff5f6314eb67b3ad242936ef6f7d79d49682e6d4613d14cd9d8918c",
+      "title": "accountsService"
+    },
+    {
+      "openapi_version": "0.1.0",
+      "source_sha256": "27af9ccbb51dece503e9699dcaf24c19546ec658895b77edf15d44f34c17b898",
+      "title": "authService"
+    }
+  ]
+}

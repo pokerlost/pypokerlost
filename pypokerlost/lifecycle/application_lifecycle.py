@@ -1,4 +1,4 @@
-"""User-defined application lifecycle contract."""
+"""User-defined Pokerlost application lifecycle contract."""
 
 from __future__ import annotations
 
@@ -7,23 +7,20 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from pypokerlost.application import Application
+    from pypokerlost.application import PokerlostApplication
 
 
-class ApplicationLifecycle(Protocol):
-    """Create one user-defined context around application execution."""
-
+class PokerlostApplicationLifecycle(Protocol):
     def __call__(
         self,
-        application: Application,
+        application: PokerlostApplication,
         /,
-    ) -> AbstractAsyncContextManager[None]:
-        """Create the user lifecycle context for ``application``."""
+    ) -> AbstractAsyncContextManager[None]: ...
 
 
 @asynccontextmanager
-async def default_application_lifecycle(
-    application: Application,
+async def default_pokerlost_application_lifecycle(
+    application: PokerlostApplication,
 ) -> AsyncIterator[None]:
-    """Provide the default no-op application lifecycle."""
+    del application
     yield

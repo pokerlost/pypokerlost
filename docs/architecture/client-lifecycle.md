@@ -1,52 +1,51 @@
 # Client lifecycle
 
-Each `Client` owns one asynchronous session and one asynchronous storage backend. Defaults are
-`HttpxSession` and `MemoryStorage`.
+Each `PokerlostClient` owns one asynchronous `PokerlostSession`. The default is `HttpxSession`.
 
-Startup order is:
-
-```text
-storage.start()
-→ session.start()
-```
-
-A startup failure closes every earlier resource. Shutdown reverses ownership:
-
-```text
-session.close()
-→ storage.close()
-```
-
-Every registered cleanup is attempted. `Client` has the explicit lifecycle pair `start()` and
-`stop()` and also supports `async with`.
+## Lifecycle
 
 ```python
-from pypokerlost import Client
+from pypokerlost import PokerlostClient
 
 
-async def use_client() -> None:
-    async with Client() as client:
+async def use_client(client: PokerlostClient) -> None:
+    async with client:
         ...
 ```
 
-Context entry installs the client as the task-local current client after resources start. Context
-exit restores the prior task-local value before resources close. The same instance cannot have two
-overlapping context entries, but an active client supports concurrent independent calls.
+`start()` starts the session and `stop()` closes it. Async context entry also installs the client as
+the task-local current client; exit restores the previous context before session cleanup. The same
+instance cannot have overlapping context entries, but one active instance supports independent
+concurrent calls.
 
-A long-running service constructs one client per real outbound target, owns it in application
-lifespan resources, and reuses it. Target credentials and token lifecycle state belong to separate
-service-owned ports and adapters; they are not client resources.
+A long-running service creates one client per real outbound target in application lifespan,
+reuses it, and closes it during shutdown. It creates no target client merely for template symmetry.
 
-Remote calls and retry delays remain outside request-owned database transactions.
+## Application owner
 
-## Binding and application
+`PokerlostApplication(client, *, lifecycle=...)` coordinates one client and an optional async
+lifecycle callback.
 
-`PokerlostType` resolves an explicit or validation-context client first, then the current task-local
-client, otherwise raising `ClientContextError`. `await client(method)` executes a bound semantic
-snapshot and leaves the caller's method reusable.
+```python
+from collections.abc import Awaitable, Callable
 
-`Application` owns one required client plus an optional caller lifecycle. `run_async()` uses the
-caller's event loop; `run()` is the sole synchronous loop-owning entry point and handles supported
-shutdown signals.
+from pypokerlost import PokerlostApplication, PokerlostClient
+
+
+async def entrypoint(client: PokerlostClient) -> int:
+    return 0
+
+
+application = PokerlostApplication(client)
+result = await application.run_async(entrypoint)
+```
+
+`run_async()` uses the caller's event loop. `run()` owns a new event loop and supported shutdown
+signals; it is the only synchronous lifecycle entrypoint.
+
+## Transaction boundary
+
+Services must not keep a request-owned database transaction open during token acquisition, a
+remote attempt, or retry delay. Transport retry does not replace service-owned workflow recovery.
 
 See `docs/api/client.md` and `docs/index.md`.

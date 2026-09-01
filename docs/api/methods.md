@@ -1,99 +1,69 @@
 # Methods
 
-`PokerlostMethod[ResultT]` is the public base for strict typed API method objects.
+`PokerlostMethod[ResultT]` is the strict base for flat typed operation calls.
 
-## Import
-
-The class is available from the package root and the focused method facade:
+## Public imports
 
 ```python
 from pypokerlost import PokerlostMethod
-
-# Equivalent focused import:
-from pypokerlost.methods import PokerlostMethod
+from pypokerlost.methods import (
+    AssignPrincipalRole,
+    GetJwks,
+    GetToken,
+    IssueLoginGrant,
+    ProvisionHuman,
+    RefreshToken,
+    SetPrincipalStatus,
+)
 ```
 
-Generated methods appear under `pypokerlost.methods.<service_package>`. The tracked authService
-contract exposes its ordinary form operation directly:
+Methods are imported directly from `pypokerlost.methods`; there are no service subpackages and no
+redundant class suffix.
+
+## Metadata
 
 ```python
-from pypokerlost.methods.auth_service import OAuthTokenMethod
+from pypokerlost import PokerlostMethod
+from pypokerlost.types import PokerlostOperation, PokerlostScope
+
+
+class GetMe(PokerlostMethod[str]):
+    operation = PokerlostOperation("getMe")
+    required_scopes = (PokerlostScope("accounts.self.read"),)
+    returning = str
 ```
 
-## Defining a method
+The operation must be one single lowerCamelCase identifier. Every business invocation is POST to
+that operation's root path. Public methods declare `required_scopes = ()`; protected methods
+declare the exact canonical tuple.
 
-A concrete method declares request fields and four pieces of metadata. This custom example is
-illustrative rather than part of the tracked authService output:
+Payload fields are ordinary strict Pydantic fields on the method. The request builder serializes
+the entire method as `payload`; method metadata is class-level and never appears in JSON.
 
-```python
-from pypokerlost import PokerlostMethod, PokerlostType
+## Current auth methods
 
+| Class | Operation | Transport scopes | Server status in this foundation |
+| --- | --- | --- | --- |
+| `GetToken` | `getToken` | public | Implemented by authService. |
+| `RefreshToken` | `refreshToken` | public | Future-facing SDK stub. |
+| `GetJwks` | `getJwks` | public | Future-facing SDK stub. |
+| `ProvisionHuman` | `provisionHuman` | `auth.internal.provisionHuman` | Future-facing SDK stub. |
+| `SetPrincipalStatus` | `setPrincipalStatus` | `auth.internal.setPrincipalStatus` | Future-facing SDK stub. |
+| `AssignPrincipalRole` | `assignPrincipalRole` | `auth.internal.assignPrincipalRole` | Future-facing SDK stub. |
+| `IssueLoginGrant` | `issueLoginGrant` | `auth.internal.issueLoginGrant` | Future-facing SDK stub. |
 
-class AccountResult(PokerlostType):
-    account_id: int
-    display_name: str
-
-
-class GetAccountMethod(PokerlostMethod[AccountResult]):
-    __api_method__ = "support.getAccount"
-    __returning__ = AccountResult
-
-    account_id: int
-```
-
-`__http_method__` defaults to `"POST"`. A method may explicitly set it to one of `"GET"`,
-`"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"` when its contract requires another method.
-`__request_content_type__` defaults to `"application/json"`; the generator declares standard form
-encoding when an OpenAPI request body requires it.
-
-`__api_method__` is the full operation identity and must be an `APIOperation` such as
-`support.getAccount`. It has exactly two segments and one dot. Each segment begins with a lowercase
-ASCII letter and otherwise contains only ASCII letters or digits, allowing ordinary lowerCamelCase
-while rejecting underscores, hyphens, and additional dots. `__returning__` supplies the runtime
-type passed to Pydantic result validation; it may be a `PokerlostType`, scalar, collection, or
-supported alias.
-
-Method input models are strict and reject unknown fields. Request serialization uses field names,
-excludes omitted fields, and preserves an explicitly supplied `None`.
+A stub performs a normal SDK call. It never returns a synthetic result and does not mean that the
+server route, persistence, or workflow already exists.
 
 ## Invocation
 
-Execute explicitly through a client when possible:
-
-```text
-method = GetAccountMethod(account_id=42)
-
+```python
 result = await client(method)
 result = await client.make_request(method)
+result = await method.emit(client)
 ```
 
-Both client forms copy and bind the executing method, leaving `method` reusable.
+Inside an active client context, an unbound method can also be awaited directly. Without an
+explicit or current client, direct awaiting fails locally.
 
-Bind the exact instance when direct method awaiting is desirable:
-
-```text
-result = await method.as_(client)
-```
-
-Inside an active `Client` or `Application` context, an unbound method resolves the task-local
-current client:
-
-```python
-async def execute_current(method):
-    async with client:
-        return await method
-```
-
-Without an explicit or current client, direct awaiting raises `ClientContextError`. Calling
-`method.as_(None)` clears an explicit binding.
-
-## Result client context
-
-Before transport, the client binds an isolated method copy. `ResponseHandler` later validates
-`__returning__` with that bound client in Pydantic context. Returned and nested `PokerlostType`
-objects can therefore call `resolve_client()` and obtain the same client.
-
-See `docs/api/transport.md` for request construction and response validation and
-`docs/generator/generated-layout.md` for generator-owned packages.
-
-See `docs/index.md`.
+See `docs/api/types.md`, `docs/generator/generated-layout.md`, and `docs/index.md`.

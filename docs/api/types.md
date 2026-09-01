@@ -1,94 +1,83 @@
 # Types
 
-The public type facade provides the bases and semantic aliases used by handwritten and generated
-PokerLost contracts.
+The flat `pypokerlost.types` facade owns canonical wire and value models.
 
-## Typed API object bases
-
-Import the object bases from either the package root or the focused types facade:
-
-```python
-from pypokerlost import MutablePokerlostType, PokerlostType
-
-# Equivalent focused import:
-from pypokerlost.types import MutablePokerlostType, PokerlostType
-```
-
-`PokerlostType` is a frozen Pydantic model for returned and nested API objects. It allows additional
-response fields for forward compatibility, validates defaults, rejects non-finite numbers, and
-keeps an optional client in a private, non-serialized binding.
-
-```python
-from pypokerlost import PokerlostType
-
-
-class Account(PokerlostType):
-    account_id: int
-    display_name: str
-```
-
-`MutablePokerlostType` deliberately permits field assignment while preserving the remaining base
-configuration and client-binding behavior.
-
-## Client binding
-
-Both bases expose:
-
-- `as_(client)`, which sets the private binding and returns the same object;
-- `client`, which returns the explicit or validation-context binding, if present;
-- `resolve_client()`, which falls back to the task-local current client and otherwise raises
-  `ClientContextError`.
-
-Passing `None` to `as_()` clears the explicit binding. Private binding state never appears in
-`model_dump()` output.
-
-## Semantic aliases
-
-The focused facade exports these aliases:
+## Core imports
 
 ```python
 from pypokerlost.types import (
-    APIBase,
-    HTTPMethod,
-    HTTPRequestContentType,
-    JSONDumps,
-    JSONLoads,
-    JSONScalar,
-    JSONValue,
-    OAuthScope,
-    APIOperation,
-    StorageKey,
-    StorageTTL,
+    PokerlostAuthorization,
+    PokerlostAuthorizationContext,
+    PokerlostAuthorizedRequest,
+    PokerlostClientCredentials,
+    PokerlostOperation,
+    PokerlostRequest,
+    PokerlostResponse,
+    PokerlostScope,
+    PokerlostToken,
+    PokerlostTokenState,
 )
 ```
 
-| Alias | Contract |
-|---|---|
-| `APIBase` | Strict HTTP(S) URL string without user information, a query, or a fragment; normalized without a trailing slash. |
-| `HTTPMethod` | `"GET"`, `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"`. |
-| `HTTPRequestContentType` | Standard JSON or form request-body media type. |
-| `APIOperation` | Exactly `namespace.someOperation`: two ASCII alphanumeric segments with lowercase initials and exactly one dot. |
-| `JSONDumps` | Callable JSON encoder returning `str`. |
-| `JSONLoads` | Callable dynamic JSON decoder. |
-| `JSONScalar` | Boolean, integer, finite float, string, or `None`. |
-| `JSONValue` | Exact built-in JSON scalars, lists, and string-keyed dictionaries. |
-| `OAuthScope` | At least two dot-separated lowerCamelCase ASCII identifier segments. |
-| `StorageKey` | Strict non-empty string containing at least one non-whitespace character. |
-| `StorageTTL` | Strict `int`, `float`, `timedelta`, or `None`; accepted values normalize to positive finite seconds. |
+`PokerlostOperation` validates `^[a-z][A-Za-z0-9]*$`. `PokerlostScope` validates at least two dotted
+lowerCamelCase segments. Scope helpers provide canonical sorting, duplicate rejection, and the
+internal space-delimited claim representation.
 
-`HTTPMethod` and `HTTPRequestContentType` are literal types, not enums. Shared authorization enums
-are exported from `pypokerlost.contracts.authorization`.
+## Request and response models
 
-## JSON boundaries
+```python
+class PokerlostRequest[PayloadT](BaseModel):
+    payload: PayloadT
 
-`JSONValue` rejects container subclasses, non-string dictionary keys, non-finite floats, and other
-Python objects. This keeps request normalization and storage behavior within the JSON-compatible
-contract.
 
-`StorageTTL` rejects booleans even though `bool` is an `int` subclass in Python. Zero, negative,
-infinite, and NaN lifetimes are invalid. See `docs/api/storage.md` for boundary exception behavior.
+class PokerlostAuthorizedRequest[PayloadT](BaseModel):
+    authorization: PokerlostAuthorization
+    payload: PayloadT
 
-See `docs/architecture/types-and-methods.md` for generated placement and validation context
-propagation.
 
-See `docs/index.md`.
+class PokerlostResponse[ResultT](BaseModel):
+    ok: bool
+    result: ResultT | None = None
+    error: str | None = None
+    error_message: str | None = None
+    retry_after: float | None = None
+```
+
+Impossible success/failure combinations are rejected. A body retry delay must be finite and
+non-negative.
+
+## Token models
+
+```python
+class PokerlostToken(BaseModel):
+    access_token: str
+    refresh_token: str | None = None
+    expires_in: int
+    scopes: tuple[PokerlostScope, ...]
+    audience: str
+
+
+class PokerlostTokenState(BaseModel):
+    token: PokerlostToken
+    expires_at: float
+```
+
+Token and credential secrets are repr-hidden and validation input is hidden. They still serialize
+because the JSON protocol requires them. Token models perform no network, persistence, signing, or
+verification.
+
+## Other exports
+
+The facade also exports:
+
+- `PokerlostType` and `MutablePokerlostType` for API objects with private client binding;
+- `PokerlostAccessTokenClaims` for validated internal claim data;
+- `PrincipalType`, `PrincipalStatus`, and `AuthorizationRole`;
+- `GetTokenRequest`, `RefreshTokenRequest`, and focused request/response types used by current auth
+  method stubs;
+- `JSONScalar` and `JSONValue`.
+
+There are no service namespaces, generic HTTP types, storage types, or compatibility contract
+facades.
+
+See `docs/architecture/types-and-methods.md` and `docs/index.md`.

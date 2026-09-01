@@ -1,101 +1,55 @@
 # Generator architecture
 
-The development-time generator turns one validated PokerLost OpenAPI contract into deterministic
-method and type packages without participating in SDK runtime execution.
+The development-time generator validates one or more Pokerlost OpenAPI documents as a single
+global input and produces flat SDK sources.
 
 ## Pipeline
 
-Both contract sources converge immediately on the same pipeline:
-
 ```text
-raw OpenAPI JSON file ─────────┐
-                              ├─> OpenAPIDocument
-service /<openapi-operation> ──┘          │
-                                         ▼
-                     canonical source hash
-                                │
-                                ▼
-                    reachable-schema resolver
-                                │
-                                ▼
-                       operation model
-                                │
-                                ▼
-                    deterministic renderer
-                         │             │
-                         ▼             ▼
-                 methods/<service>/ types/<service>/
-                         └──────┬──────┘
-                                ▼
-                    manifest and safe writer
+OpenAPI JSON documents
+→ parse every document
+→ preflight global public names
+→ validate business operations and envelopes
+→ collect reachable public schemas
+→ resolve exact method scopes
+→ render all files in memory
+→ compare or write manifest-owned files
 ```
 
-File mode parses a raw JSON document. Service mode validates `--openapi-operation` as an
-`APIOperation`, defaults it to `openapi.get`, and fetches `/<openapi-operation>` with a directly
-scoped `httpx.AsyncClient`. It then validates the returned `Response[OpenAPIDocument]`. File mode
-accepts the same optional value only as the exact system-route selector, allowing a captured custom
-publication contract to generate identically without performing a fetch. Acquisition is the only
-difference between the modes; contract resolution, rendering, ownership, and writing are shared.
+No output file changes before global operation and schema preflight succeeds.
 
-## Validation phases
+## Validation
 
-The document model validates OpenAPI versioning, service identity, paths, supported operations, and
-the structural fields used by generation. Component schemas, request bodies, and responses remain
-JSON values until a selected operation makes them reachable.
+Generated business operations must use POST, path `/<operationId>`, a required JSON body, one of
+the two canonical request envelopes, and a JSON `PokerlostResponse` for every numeric 2xx response.
+OpenAPI parameters and non-empty operation security declarations are rejected. Public
+infrastructure GET routes are skipped.
 
-This delayed boundary prevents unused framework-owned components and non-success responses from
-blocking generation. Once reachable, a node is validated against the supported subset and failures
-identify its component or operation location. The complete supported subset is defined in
-`docs/generator/contract.md`.
+Operation, method class/module, public schema name, and schema-module collisions are checked across
+all documents. The generator does not add a service prefix to resolve collisions.
 
-## Reference resolution
+## Scope source
 
-The resolver accepts local component references for schemas, request bodies, and responses. It
-follows reference chains, rejects missing or external targets, and detects pure reference cycles.
-Object composition is normalized before rendering; recursive named object relationships remain
-available to generated Pydantic models.
+The request schema tells the generator whether an operation is public or protected. It does not
+tell the generator the exact scope tuple. Protected scopes must come from either:
 
-## Operation model and rendering
+- an existing hand-written flat method with literal `operation` and `required_scopes`; or
+- an explicit checked JSON scope map supplied with `--scope-map`.
 
-Each selected API operation is reduced to a transport method, API operation name, request media
-type and object schema, result schema, generated class name, and module name. Operations and all
-rendered imports, exports, fields, constraints, and files use stable ordering.
+Descriptions and operation names are never parsed to guess scopes.
 
-The renderer emits:
+## Rendering and ownership
 
-- one strict `PokerlostMethod` subclass per API operation;
-- referenced API object classes based on `PokerlostType`;
-- PEP 695 aliases for generated non-model types;
-- focused `__init__.py` facades for each service method and type package.
+Every generated operation gets one `methods/<module>.py`; every generated public type gets one
+`types/<module>.py`. Facades are regenerated from generated and hand-written flat modules. The
+version-three manifest records all source contracts and the exact generator-owned file list.
 
-Exact SDK-owned authorization component schemas reuse their public shared classes and aliases.
-Those components are not rendered into the service type package. A same-named incompatible schema
-fails closed.
-
-Generated source includes no timestamps. Its header records the generator version, service ID,
-OpenAPI contract version, and canonical contract SHA-256, so equal validated inputs produce equal
-files.
-
-## Ownership and updates
-
-One generation targets an SDK package root containing both `methods/` and `types/`. A version-two
-manifest scopes ownership to the canonical output root and service package. Before writing, the
-pipeline applies contract-version policy, checks conflicting targets, and identifies stale files
-from previous manifest ownership.
-
-Writes use temporary files followed by atomic replacement. Stale source is removed only when the
-previous manifest proves ownership and the file still carries the generator header. Details of the
-layout, manual-file protection, and migration policy are in
-`docs/generator/generated-layout.md`.
+Stale files are removed only when prior manifest ownership and the generator header both prove
+ownership. Manual stubs are not overwritten or removed.
 
 ## Runtime boundary
 
-The generator lives under `scripts/` and is development tooling. It reuses focused public SDK
-contracts such as `Response`, `HTTPMethod`, `APIOperation`, `PokerlostMethod`, and `PokerlostType`,
-but it does not instantiate `Client`, `Application`, sessions, storage, request
-builders, or response handlers.
+The generator is tooling under `scripts/`. Generated code imports stable runtime facades only. It
+does not instantiate clients, middleware, sessions, token stores, or service verifiers.
 
-Generated modules depend only on the runtime package and declared runtime dependencies. They never
-import generator models, Typer, aiofiles, or private SDK implementation names.
-
-See `docs/index.md`.
+See `docs/generator/contract.md`, `docs/generator/generated-layout.md`, and `docs/index.md`.

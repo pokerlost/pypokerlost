@@ -1,71 +1,44 @@
-# API server
+# API target
 
-`APIServer` validates one PokerLost API URL template and expands a complete operation identifier
-into its HTTP endpoint.
+`PokerlostAPIServer` validates one origin root and builds `/<operationId>` URLs.
 
 ## Import and construction
 
-Use the focused client transport module:
-
 ```python
-from pypokerlost.client.api_server import APIServer, PRODUCTION
+from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.types import PokerlostOperation
+
+api_server = PokerlostAPIServer("https://accounts.example.internal")
+url = api_server.operation_url(PokerlostOperation("getBalance"))
 ```
 
-The usual constructor is `from_base()`:
+The dataclass constructor signature is:
 
 ```python
-api_server = APIServer.from_base("https://pokerlost.example/api")
-
-url = api_server.api_url("accounts.getSelf")
-assert url == "https://pokerlost.example/api/accounts.getSelf"
+PokerlostAPIServer(base_url: str)
 ```
 
-`from_base()` accepts a strict HTTP(S) string, rejects user information, a query, or a fragment,
-normalizes away a trailing slash, and appends `/{method}`. A non-string raises `TypeError`; an
-invalid URL or URL with any rejected component raises `ValueError`.
+The URL must identify an origin root. User information, a non-root path, query, and fragment are
+rejected. A trailing slash is normalized away.
 
-Direct construction accepts the full template:
+Production and other non-loopback targets must use HTTPS. Plain HTTP is accepted only for
+`localhost`, `127.0.0.1`, or `::1` development targets.
+
+## Session composition
 
 ```python
-api_server = APIServer(
-    base="https://pokerlost.example/api/{method}",
-)
-```
-
-The frozen, strict, extra-forbid model requires the template to end with exactly one `/{method}`.
-`RequestBuilder` validates an operation before `HttpxSession` passes it to `api_url()`.
-
-## Default target
-
-The included constant is exactly:
-
-```python
-PRODUCTION = APIServer.from_base("http://localhost:8080/api")
-```
-
-Its normalized template is:
-
-```text
-http://localhost:8080/api/{method}
-```
-
-Despite the constant name, the current default is a localhost endpoint. It does not discover a
-remote production service or derive a target from service metadata. Applications that use another
-gateway must inject an explicit `APIServer` into `HttpxSession`.
-
-```python
-from pypokerlost import Client
-from pypokerlost.client.api_server import APIServer
-from pypokerlost.client.session import HttpxSession
+from pypokerlost import PokerlostClient
+from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.session import HttpxSession
 
 session = HttpxSession(
-    api_server=APIServer.from_base("http://127.0.0.1:8000/api"),
+    api_server=PokerlostAPIServer("https://accounts.example.internal"),
+    timeout=10.0,
 )
-client = Client(session=session)
+client = PokerlostClient(session=session)
 ```
 
-`APIServer` owns URL targeting only. It performs no network I/O, service discovery, routing,
-authorization, or retry behavior. See `docs/api/transport.md` for `HttpxSession` and
-`docs/architecture/request-response-pipeline.md` for URL ownership.
+`PokerlostAPIServer` owns URL validation only. It performs no discovery, routing, I/O,
+authorization, or retry.
 
-See `docs/index.md`.
+See `docs/api/transport.md` and `docs/index.md`.
