@@ -32,6 +32,7 @@ import keyword
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Annotated, Any, Literal, Never, Self
 from uuid import uuid4
@@ -53,9 +54,25 @@ from pydantic import (
 )
 
 from pypokerlost.client.response import Response
-from pypokerlost.types import APIBase, APIOperation, HTTPMethod, JSONValue
+from pypokerlost.contracts.authorization import (
+    AccessTokenClaims,
+    AuthorizationContext,
+    AuthorizationRole,
+    OAuthTokenResponse,
+    OAuthTokenType,
+    PrincipalStatus,
+    PrincipalType,
+)
+from pypokerlost.types import (
+    APIBase,
+    APIOperation,
+    HTTPMethod,
+    HTTPRequestContentType,
+    JSONValue,
+    OAuthScope,
+)
 
-GENERATOR_VERSION_TEXT = "1.1.0"
+GENERATOR_VERSION_TEXT = "1.2.0"
 DEFAULT_OUTPUT = Path("pypokerlost")
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_DIRECTORY = REPOSITORY_ROOT / "scripts" / ".generated_methods"
@@ -79,6 +96,7 @@ PASCAL_CASE_ACRONYMS = {
     "http": "HTTP",
     "httpx": "Httpx",
     "json": "JSON",
+    "oauth": "OAuth",
     "oauth2": "OAuth2",
     "openapi": "OpenAPI",
     "sdk": "SDK",
@@ -104,6 +122,8 @@ RESERVED_SERVICE_PACKAGES = frozenset(
         "base",
         "json",
         "operation",
+        "oauth_scope",
+        "request_content_type",
         "storage_key",
         "storage_ttl",
     }
@@ -156,6 +176,38 @@ INFO_METADATA_FIELDS = frozenset({"contact", "description", "license", "summary"
 DOCUMENT_METADATA_FIELDS = frozenset(
     {"externalDocs", "jsonSchemaDialect", "security", "servers", "tags", "webhooks"}
 )
+
+SHARED_SCHEMA_CONTRACTS: dict[str, tuple[str, object]] = {
+    "AccessTokenClaims": (
+        "pypokerlost.contracts.authorization",
+        AccessTokenClaims,
+    ),
+    "AuthorizationContext": (
+        "pypokerlost.contracts.authorization",
+        AuthorizationContext,
+    ),
+    "AuthorizationRole": (
+        "pypokerlost.contracts.authorization",
+        AuthorizationRole,
+    ),
+    "OAuthScope": ("pypokerlost.types", OAuthScope),
+    "OAuthTokenResponse": (
+        "pypokerlost.contracts.authorization",
+        OAuthTokenResponse,
+    ),
+    "OAuthTokenType": (
+        "pypokerlost.contracts.authorization",
+        OAuthTokenType,
+    ),
+    "PrincipalStatus": (
+        "pypokerlost.contracts.authorization",
+        PrincipalStatus,
+    ),
+    "PrincipalType": (
+        "pypokerlost.contracts.authorization",
+        PrincipalType,
+    ),
+}
 
 
 def reject_python_keyword(value: str) -> str:
@@ -263,6 +315,9 @@ PythonPackageName = Annotated[
 ]
 
 API_OPERATION_ADAPTER: TypeAdapter[APIOperation] = TypeAdapter(APIOperation)
+REQUEST_CONTENT_TYPE_ADAPTER: TypeAdapter[HTTPRequestContentType] = TypeAdapter(
+    HTTPRequestContentType
+)
 DEFAULT_OPENAPI_OPERATION = API_OPERATION_ADAPTER.validate_python("openapi.get")
 PYTHON_CLASS_ADAPTER = TypeAdapter(PythonClassName)
 PYTHON_PACKAGE_ADAPTER = TypeAdapter(PythonPackageName)
@@ -538,6 +593,30 @@ class JSONSchema(BaseModel):
             raise ValueError("JSON Schema minItems must not exceed maxItems")
 
         return self
+
+
+def shared_contract_schema(name: str) -> JSONSchema:
+    """Return the exact OpenAPI component shape owned by a shared SDK contract."""
+    _, contract = SHARED_SCHEMA_CONTRACTS[name]
+    if isinstance(contract, type) and issubclass(contract, BaseModel):
+        raw_schema = contract.model_json_schema(
+            by_alias=True,
+            mode="validation",
+            ref_template="#/components/schemas/{model}",
+        )
+    else:
+        raw_schema = TypeAdapter(contract).json_schema(
+            mode="validation",
+            ref_template="#/components/schemas/{model}",
+        )
+    raw_schema.pop("$defs", None)
+    try:
+        return JSONSchema.model_validate(raw_schema)
+    except ValidationError as error:
+        raise GenerationError(
+            f"shared SDK schema {name} is outside the supported generator contract: "
+            f"{format_pydantic_error(error)}"
+        ) from error
 
 
 class OpenAPIMediaType(BaseModel):
@@ -888,6 +967,7 @@ class OperationSpec:
 
     path: str
     http_method: HTTPMethod
+    request_content_type: HTTPRequestContentType
     operation_id: APIOperation
     class_name: str
     file_name: str
@@ -1085,6 +1165,13 @@ class SchemaRenderer:
         if schema.ref is not None:
             name = self._resolver.schema_ref_name(schema.ref)
             validated_name = PYTHON_CLASS_ADAPTER.validate_python(name)
+            shared_contract = SHARED_SCHEMA_CONTRACTS.get(validated_name)
+            if shared_contract is not None:
+                module, _ = shared_contract
+                return RenderedType(
+                    validated_name,
+                    imports=frozenset({ImportSpec(module, validated_name)}),
+                )
             return RenderedType(validated_name, model_refs=frozenset({validated_name}))
 
         if schema.any_of:
@@ -1443,6 +1530,7 @@ class MethodGenerator:
             )
 
     def generate(self) -> list[GeneratedFile]:
+        self._validate_shared_components()
         operations = self._operation_specs()
         referenced_models = self._referenced_models(operations)
         method_class_names = {operation.class_name for operation in operations}
@@ -1487,6 +1575,19 @@ class MethodGenerator:
         )
 
         return sorted(files, key=lambda item: item.relative_path.as_posix())
+
+    def _validate_shared_components(self) -> None:
+        shared_names = sorted(
+            set(self.document.components.schemas).intersection(SHARED_SCHEMA_CONTRACTS)
+        )
+        for name in shared_names:
+            actual = self.resolver.component_schema(name)
+            expected = shared_contract_schema(name)
+            if canonical_schema_key(actual) != canonical_schema_key(expected):
+                raise GenerationError(
+                    f"OpenAPI component {name} is incompatible with the canonical shared "
+                    "pypokerlost contract"
+                )
 
     def _operation_specs(self) -> list[OperationSpec]:
         operations: list[OperationSpec] = []
@@ -1552,7 +1653,7 @@ class MethodGenerator:
                         f"{operation_id} uses unsupported OpenAPI parameters: {parameter_list}"
                     )
 
-                request_schema, request_ref = self._request_schema(
+                request_schema, request_ref, request_content_type = self._request_schema(
                     operation,
                     operation_id,
                 )
@@ -1573,6 +1674,7 @@ class MethodGenerator:
                     OperationSpec(
                         path=path,
                         http_method=http_method,
+                        request_content_type=request_content_type,
                         operation_id=operation_id,
                         class_name=class_name,
                         file_name=file_name,
@@ -1590,28 +1692,38 @@ class MethodGenerator:
         self,
         operation: OpenAPIOperation,
         operation_id: APIOperation,
-    ) -> tuple[JSONSchema | None, str | None]:
+    ) -> tuple[JSONSchema | None, str | None, HTTPRequestContentType]:
         if operation.request_body is None:
-            return None, None
+            return None, None, "application/json"
 
         body_node = self.resolver.parse_request_body(
             operation.request_body,
             location=f"{operation_id}.requestBody",
         )
         body = self.resolver.resolve_request_body(body_node)
-        unsupported_content = sorted(set(body.content) - {"application/json"})
-        if unsupported_content:
-            content_types = ", ".join(unsupported_content)
+        supported_content_types: frozenset[HTTPRequestContentType] = frozenset(
+            {"application/json", "application/x-www-form-urlencoded"}
+        )
+        content_types = set(body.content)
+        if len(content_types) != 1 or not content_types.issubset(supported_content_types):
+            rendered_content_types = ", ".join(sorted(content_types)) or "<none>"
             raise GenerationError(
-                f"API operation requestBody contains unsupported media types: {content_types}"
+                "API operation requestBody must contain exactly one supported media type: "
+                f"{rendered_content_types}"
             )
-        media = body.content.get("application/json")
+        request_content_type = REQUEST_CONTENT_TYPE_ADAPTER.validate_python(
+            next(iter(content_types)),
+            strict=True,
+        )
+        media = body.content.get(request_content_type)
         if media is None or media.schema_ is None:
-            raise GenerationError("API operation requestBody must define application/json schema")
+            raise GenerationError(
+                f"API operation requestBody must define {request_content_type} schema"
+            )
 
         request_schema = self.resolver.parse_schema(
             media.schema_,
-            location=f"{operation_id}.requestBody.content.application/json.schema",
+            location=f"{operation_id}.requestBody.content.{request_content_type}.schema",
         )
         request_ref = (
             self.resolver.schema_ref_name(request_schema.ref)
@@ -1632,7 +1744,26 @@ class MethodGenerator:
                 "free-form request bodies are unsupported; declare typed request fields"
             )
 
-        return resolved, request_ref
+        if request_content_type == "application/x-www-form-urlencoded":
+            self._validate_form_request_schema(resolved)
+
+        return resolved, request_ref, request_content_type
+
+    def _validate_form_request_schema(self, schema: JSONSchema) -> None:
+        for field_name, field_schema in sorted(schema.properties.items()):
+            resolved = self.resolver.resolve_schema(field_schema)
+            kinds = self.schemas.value_kinds(resolved)
+            if kinds == {"string"}:
+                continue
+            if kinds == {"array"} and resolved.items is not None:
+                item = self.resolver.resolve_schema(resolved.items)
+                item_kinds = self.schemas.value_kinds(item)
+                if item_kinds == {"string"}:
+                    continue
+            raise GenerationError(
+                "application/x-www-form-urlencoded request field "
+                f"{field_name!r} must be a string or flat array of strings"
+            )
 
     def _result_schema(
         self,
@@ -1678,7 +1809,7 @@ class MethodGenerator:
             raise GenerationError(f"{operation_id} has no JSON 2xx success response")
 
         success_responses.sort(key=lambda item: item[0])
-        canonical = {canonical_schema_json(schema) for _, schema in success_responses}
+        canonical = {canonical_schema_key(schema) for _, schema in success_responses}
         if len(canonical) != 1:
             raise GenerationError(f"{operation_id} has multiple incompatible 2xx response schemas")
 
@@ -1758,7 +1889,7 @@ class MethodGenerator:
                     refs.update(self.schemas.collect_refs(property_schema))
             refs.update(self.schemas.collect_refs(operation.result_schema))
 
-        return sorted(refs)
+        return sorted(refs - set(SHARED_SCHEMA_CONTRACTS))
 
     def _render_types(self, model_names: Sequence[str]) -> str:
         imports: set[ImportSpec] = set()
@@ -1888,6 +2019,8 @@ class MethodGenerator:
 
         if operation.http_method != "POST":
             lines.append(f'    __http_method__ = "{operation.http_method}"')
+        if operation.request_content_type != "application/json":
+            lines.append('    __request_content_type__ = "application/x-www-form-urlencoded"')
 
         if fields:
             lines.append("")
@@ -2718,17 +2851,34 @@ def openapi_sha256(document: OpenAPIDocument) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def canonical_schema_json(schema: JSONSchema) -> str:
-    return json.dumps(
-        schema.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_unset=True,
-        ),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+def canonical_schema_key(schema: JSONSchema) -> tuple[object, ...]:
+    """Return a hashable semantic key without framework-only spelling differences."""
+    value = schema.model_dump(
+        mode="python",
+        by_alias=True,
+        exclude_unset=True,
+        exclude_defaults=True,
     )
+    return _canonical_json_key(value)
+
+
+def _canonical_json_key(value: JSONValue) -> tuple[object, ...]:
+    if value is None:
+        return ("null",)
+    if type(value) is bool:
+        return ("boolean", value)
+    if type(value) is int or type(value) is float:
+        return ("number", Decimal(str(value)).normalize())
+    if type(value) is str:
+        return ("string", value)
+    if type(value) is list:
+        return ("array", *(_canonical_json_key(item) for item in value))
+    if type(value) is dict:
+        return (
+            "object",
+            *((key, _canonical_json_key(item)) for key, item in sorted(value.items())),
+        )
+    raise TypeError("Canonical JSON schema value is outside JSONValue")
 
 
 def manifest_json(manifest: GenerationManifest) -> str:

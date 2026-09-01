@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from pypokerlost.types import APIOperation, HTTPMethod, JSONValue
+from pypokerlost.types import APIOperation, HTTPMethod, HTTPRequestContentType, JSONValue
 
 
 class Request(BaseModel):
@@ -21,5 +21,6 @@ class Request(BaseModel):
 
     method: APIOperation
     http_method: HTTPMethod
+    content_type: HTTPRequestContentType
     data: dict[str, JSONValue] = Field(repr=False)
     headers: tuple[tuple[str, str], ...] = Field(default=(), repr=False, exclude=True)

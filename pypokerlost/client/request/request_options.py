@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Annotated, Any, Self
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -16,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from pypokerlost.client.retry import RetryPolicy
+from pypokerlost.client.retry import PokerLostRetryPolicy
 
 type _HTTPHeaderName = Annotated[
     str,
@@ -33,7 +34,24 @@ type _HTTPHeaderValue = Annotated[
         pattern=r"^[\t\x20-\x7e]*$",
     ),
 ]
-type _HTTPHeaders = tuple[tuple[_HTTPHeaderName, _HTTPHeaderValue], ...]
+
+
+def _canonicalize_http_headers(
+    headers: tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
+    seen_names: set[str] = set()
+    for name, _ in headers:
+        normalized_name = name.casefold()
+        if normalized_name in seen_names:
+            raise ValueError("HTTP header names must be unique case-insensitively")
+        seen_names.add(normalized_name)
+    return tuple(sorted(headers, key=lambda item: (item[0].casefold(), item[0])))
+
+
+type _HTTPHeaders = Annotated[
+    tuple[tuple[_HTTPHeaderName, _HTTPHeaderValue], ...],
+    AfterValidator(_canonicalize_http_headers),
+]
 _HTTP_HEADERS_ADAPTER: TypeAdapter[_HTTPHeaders] = TypeAdapter(
     _HTTPHeaders,
     config=ConfigDict(strict=True),
@@ -54,7 +72,7 @@ type _SafeHTTPHeaders = Annotated[
 
 
 class RequestOptions(BaseModel):
-    """Immutable transport options propagated through one middleware chain."""
+    """Immutable headers and optional retry policy for one transport call."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -65,7 +83,7 @@ class RequestOptions(BaseModel):
     )
 
     headers: _SafeHTTPHeaders = Field(default=(), repr=False, exclude=True)
-    retry: RetryPolicy | None = None
+    retry: PokerLostRetryPolicy | None = None
 
     @model_validator(mode="before")
     def _replace_extra_input_values(value: Any) -> Any:
@@ -77,12 +95,29 @@ class RequestOptions(BaseModel):
 
     def with_headers(self, headers: Mapping[str, str]) -> Self:
         """Return a copy with case-insensitive header replacements."""
-        additions = type(self)(headers=tuple(headers.items())).headers
-        replaced_names = {name.casefold() for name, _ in additions}
-        retained_headers = tuple(
-            (name, value) for name, value in self.headers if name.casefold() not in replaced_names
-        )
-        return type(self)(
-            headers=retained_headers + additions,
-            retry=self.retry,
-        )
+        additions: _HTTPHeaders = ()
+        invalid_headers = False
+        replaced_names: set[str] = set()
+        retained_headers: _HTTPHeaders = ()
+        try:
+            additions = _HTTP_HEADERS_ADAPTER.validate_python(tuple(headers.items()))
+            replaced_names = {name.casefold() for name, _ in additions}
+            retained_headers = tuple(
+                (name, value)
+                for name, value in self.headers
+                if name.casefold() not in replaced_names
+            )
+            return type(self)(
+                headers=retained_headers + additions,
+                retry=self.retry,
+            )
+        except Exception:
+            invalid_headers = True
+        finally:
+            headers = {}
+            additions = ()
+            replaced_names = set()
+            retained_headers = ()
+        if not invalid_headers:
+            raise AssertionError("HTTP header update completed without a result")
+        raise ValueError("HTTP headers are invalid") from None

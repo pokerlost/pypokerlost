@@ -62,14 +62,16 @@ An operation may omit `requestBody`, in which case its method class has no reque
 request body must:
 
 - be inline or use a local `#/components/requestBodies/<Name>` reference;
-- contain only the `application/json` media type;
-- define an `application/json` schema;
+- contain exactly one of `application/json` or `application/x-www-form-urlencoded`;
+- define a schema for that declared media type;
 - resolve to an object-shaped schema with declared fields or an explicitly closed empty object.
 
 Free-form request bodies are rejected. A request object with properties must set
 `additionalProperties` to `false`. A closed empty request uses `additionalProperties: false` with
 no properties. The OpenAPI `requestBody.required` value is accepted but does not change generated
 method fields.
+Form request properties are limited to strings or flat arrays of strings so generic URL encoding is
+deterministic and matches the declared wire shape.
 
 ## Successful responses
 
@@ -151,14 +153,26 @@ External references, empty component names, and reference names containing anoth
 rejected. Pure reference cycles and cyclic object composition are unsupported. Recursive named
 object relationships remain supported.
 
-Component schema, request-body, and response values are validated strictly only when a selected
-request or numeric 2xx response makes them reachable. Unused component schemas and non-success
-response schemas remain opaque JSON and do not block generation.
+Component schema, request-body, and response values are normally validated strictly only when a
+selected request or numeric 2xx response makes them reachable. Canonical shared component names
+are the deliberate exception: when present, they are checked against the SDK-owned shape even if
+unused. Other unused schemas and non-success response schemas remain opaque JSON.
 
 Recognized descriptive metadata does not affect generated code. Extension fields beginning with
 `x-` are generally accepted and ignored, but request-body and response reference objects still
 forbid siblings other than `description`. Security metadata may be present where OpenAPI permits
 it, but the generator does not interpret it or emit authorization policy.
+
+## Shared contracts
+
+Canonical component names for OAuth scopes, token results, decoded claims, verified authorization
+contexts, and their shared enums are mapped to public `pypokerlost` imports. Each component schema
+must semantically match the SDK-owned schema. The comparison normalizes only framework spelling of
+absent default values and numerically equal JSON Schema bounds; a same-named structurally
+incompatible component fails generation.
+
+This is a small built-in closed mapping. It uses no plugin registry, runtime import reflection,
+Python-import extension, or route metadata.
 
 See `docs/generator/usage.md` to run the generator and `docs/architecture/generator.md` for the
 processing model.

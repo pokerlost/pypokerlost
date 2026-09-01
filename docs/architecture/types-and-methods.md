@@ -31,8 +31,8 @@ methods declare only:
 The operation is the full operation identity. Methods carry no service-routing metadata and do not
 create endpoint-specific `Client` methods.
 
-The core repository intentionally ships no concrete service methods. The following is an
-illustration of the shape produced for a structured result:
+The tracked authService package contains `OAuthTokenMethod`. The following remains an illustration
+of the shape generated for another structured result:
 
 ```python
 from pypokerlost import PokerlostMethod, PokerlostType

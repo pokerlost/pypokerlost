@@ -31,13 +31,6 @@ class ClientStateError(ClientError):
         super().__init__(message)
 
 
-class MiddlewareConfigurationError(ClientError):
-    """Raised when per-call middleware inputs conflict."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
 class ClientRequestError(ClientError):
     """Raised when local request preparation or transport configuration is invalid."""
 

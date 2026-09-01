@@ -13,13 +13,17 @@ from pypokerlost import PokerlostMethod
 from pypokerlost.methods import PokerlostMethod
 ```
 
-The core repository intentionally contains no concrete service methods. Generated methods appear
-under `pypokerlost.methods.<service_package>` in consuming SDK output.
+Generated methods appear under `pypokerlost.methods.<service_package>`. The tracked authService
+contract exposes its ordinary form operation directly:
+
+```python
+from pypokerlost.methods.auth_service import OAuthTokenMethod
+```
 
 ## Defining a method
 
-A concrete method declares request fields and three pieces of metadata. This example is
-illustrative; these classes are not shipped by the core repository:
+A concrete method declares request fields and four pieces of metadata. This custom example is
+illustrative rather than part of the tracked authService output:
 
 ```python
 from pypokerlost import PokerlostMethod, PokerlostType
@@ -39,6 +43,8 @@ class GetAccountMethod(PokerlostMethod[AccountResult]):
 
 `__http_method__` defaults to `"POST"`. A method may explicitly set it to one of `"GET"`,
 `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"` when its contract requires another method.
+`__request_content_type__` defaults to `"application/json"`; the generator declares standard form
+encoding when an OpenAPI request body requires it.
 
 `__api_method__` is the full operation identity and must be an `APIOperation` such as
 `support.getAccount`. It has exactly two segments and one dot. Each segment begins with a lowercase

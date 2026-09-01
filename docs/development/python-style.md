@@ -27,7 +27,7 @@ and `abc.abstractmethod`.
 
 Modules, functions, parameters, and attributes use lowercase `snake_case`. Product-prefixed class
 names use `Pokerlost` as one PascalCase word, while established technical acronyms retain their
-casing: `APIServer`, `HTTPMethod`, `JSONValue`, `OpenAPIExtra`, and `APIOperation`. Preserve the
+casing: `APIServer`, `HTTPMethod`, `JSONValue`, `OAuthScope`, and `APIOperation`. Preserve the
 external-library name `HttpxSession`.
 
 ## Pydantic models

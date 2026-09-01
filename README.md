@@ -2,9 +2,9 @@
 
 Typed asynchronous Python SDK for PokerLost API operations.
 
-The SDK provides one immutable outbound middleware pipeline, OAuth2 client-credentials service
-authentication, and explicit per-call bounded retry in addition to typed generated methods and the
-universal PokerLost response envelope.
+The SDK provides typed generated methods, shared cross-service authorization data contracts,
+generic HTTP transport, explicit per-call bounded retry, and the universal PokerLost response
+envelope. Consuming services own credentials and token lifecycle orchestration.
 
 ## Requirements
 
@@ -25,8 +25,9 @@ Build an installable wheel and source distribution with `uv build`. See
 
 ## Quick example
 
-The core repository intentionally contains no concrete service methods. This small illustrative
-method uses the same public API as generated code:
+The repository tracks the generated authService method at
+`pypokerlost.methods.auth_service.OAuthTokenMethod`. This small custom method illustrates the same
+public base API for another service contract:
 
 ```python
 from pypokerlost import Client, PokerlostMethod, PokerlostType
@@ -53,8 +54,9 @@ The runtime keeps typed methods, transport requests, response validation, and ge
 objects in separate layers. See `docs/architecture/overview.md`.
 
 Service consumers compose one target-specific client for each real target and own it in their
-application lifespan. Authentication and retry usage is documented in `docs/api/middleware.md`;
-retry is disabled unless a call supplies `RequestOptions(retry=...)`.
+application lifespan. Retry is disabled unless a replay-safe call supplies
+`RequestOptions(retry=PokerLostRetryPolicy())`; callers add any already-resolved credentials through
+generic immutable request headers.
 
 ## Documentation
 
@@ -62,7 +64,8 @@ retry is disabled unless a call supplies `RequestOptions(retry=...)`.
 - `docs/getting-started/quickstart.md`
 - `docs/architecture/overview.md`
 - `docs/api/client.md`
-- `docs/api/middleware.md`
+- `docs/api/authorization-contracts.md`
+- `docs/api/retry.md`
 - `docs/generator/usage.md`
 - `docs/development/commands.md`
 

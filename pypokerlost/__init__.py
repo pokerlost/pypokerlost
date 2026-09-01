@@ -18,15 +18,12 @@ from pypokerlost.exceptions import (
     ClientRequestError,
     ClientStateError,
     ClientTimeoutError,
-    MiddlewareConfigurationError,
     PokerlostAPIError,
     PokerlostError,
     PokerlostProtocolError,
 )
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.types import MutablePokerlostType, PokerlostType
-
-from .openapi_extra import OpenAPIExtra
 
 try:
     __version__ = _distribution_version("pypokerlost")
@@ -44,9 +41,7 @@ __all__ = (
     "ClientRequestError",
     "ClientStateError",
     "ClientTimeoutError",
-    "MiddlewareConfigurationError",
     "MutablePokerlostType",
-    "OpenAPIExtra",
     "PokerlostAPIError",
     "PokerlostError",
     "PokerlostMethod",

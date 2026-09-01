@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from types import TracebackType
 from typing import Self, cast
 
 from pypokerlost.client.current_client import use_current_client
 from pypokerlost.client.request import RequestOptions
+from pypokerlost.client.retry import PokerLostRetryPolicy
+from pypokerlost.client.retry.executor import execute_with_retry
 from pypokerlost.client.session import BaseSession, HttpxSession
-from pypokerlost.exceptions import ClientRequestError, ClientStateError
+from pypokerlost.exceptions import ClientRequestError, ClientStateError, ClientTimeoutError
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.middleware import (
-    APIMiddleware,
-    APIMiddlewareCallNext,
-    APIMiddlewareContext,
-)
 from pypokerlost.storage import BaseStorage, MemoryStorage
-from pypokerlost.types import APIOperation, HTTPMethod
+from pypokerlost.types import APIOperation, HTTPMethod, HTTPRequestContentType
 
 
 class Client:
@@ -28,19 +25,10 @@ class Client:
         self,
         session: BaseSession | None = None,
         storage: BaseStorage | None = None,
-        middleware: Sequence[APIMiddleware] | None = None,
     ) -> None:
         self.session: BaseSession = session if session is not None else HttpxSession()
         self.storage: BaseStorage = storage if storage is not None else MemoryStorage()
-        self._middleware: tuple[APIMiddleware, ...] = (
-            tuple(middleware) if middleware is not None else ()
-        )
         self._context_stack: AsyncExitStack | None = None
-
-    @property
-    def middleware(self) -> tuple[APIMiddleware, ...]:
-        """Return the immutable configured middleware tuple."""
-        return self._middleware
 
     async def start(self) -> Self:
         async with AsyncExitStack() as rollback_stack:
@@ -48,9 +36,6 @@ class Client:
             rollback_stack.push_async_callback(self.storage.close)
             await self.session.start()
             rollback_stack.push_async_callback(self.session.close)
-            for component in self._middleware:
-                await component.start()
-                rollback_stack.push_async_callback(component.close)
             rollback_stack.pop_all()
         return self
 
@@ -58,8 +43,6 @@ class Client:
         async with AsyncExitStack() as cleanup_stack:
             cleanup_stack.push_async_callback(self.storage.close)
             cleanup_stack.push_async_callback(self.session.close)
-            for component in self._middleware:
-                cleanup_stack.push_async_callback(component.close)
 
     async def __call__[ResultT](
         self,
@@ -89,10 +72,13 @@ class Client:
         request_options = RequestOptions()
         operation = cast("APIOperation", None)
         http_method = cast("HTTPMethod", None)
+        content_type = cast("HTTPRequestContentType", None)
+        transport_options = RequestOptions()
+        retry_policy: PokerLostRetryPolicy | None = None
+        budget_timeout_error: ClientTimeoutError | None = None
+        execute_session = cast("Callable[[], Awaitable[ResultT]]", None)
         returning: object = None
         setup_failure: ClientRequestError | None = None
-        handler = cast("APIMiddlewareCallNext[ResultT]", None)
-        component: APIMiddleware | None = None
         try:
             try:
                 executing_method = (
@@ -107,7 +93,9 @@ class Client:
                     .as_(self)
                 )
                 request_options = options if options is not None else RequestOptions()
-                operation, http_method = self.session.request_builder.describe(executing_method)
+                operation, http_method, content_type = self.session.request_builder.describe(
+                    executing_method
+                )
                 returning = executing_method.__returning__
             except Exception:
                 setup_failure = ClientRequestError(
@@ -116,99 +104,45 @@ class Client:
                 )
 
             if setup_failure is None:
+                retry_policy = request_options.retry
+                transport_options = request_options.model_copy(update={"retry": None})
 
-                async def execute_session(
-                    execution_options: RequestOptions,
-                ) -> ResultT:
-                    try:
-                        return await self.session._make_request_with_metadata(
-                            executing_method,
-                            operation=operation,
-                            http_method=http_method,
-                            returning=returning,
-                            timeout=request_timeout,
-                            options=execution_options,
-                        )
-                    finally:
-                        execution_options = RequestOptions()
-
-                if not self._middleware:
-                    return await execute_session(request_options)
-
-                async def session_handler(
-                    *,
-                    options: RequestOptions | None = None,
-                ) -> ResultT:
-                    next_options = options if options is not None else request_options
-                    try:
-                        return await execute_session(next_options)
-                    finally:
-                        options = None
-                        next_options = RequestOptions()
-
-                handler = session_handler
-                for component in reversed(self._middleware):
-                    handler = self._wrap_middleware(
-                        component,
-                        handler,
+                async def execute_session() -> ResultT:
+                    return await self.session._make_request_with_metadata(
+                        executing_method,
                         operation=operation,
                         http_method=http_method,
+                        content_type=content_type,
+                        returning=returning,
+                        timeout=request_timeout,
+                        options=transport_options,
                     )
-                return await handler(options=request_options)
+
+                if retry_policy is None:
+                    return await execute_session()
+                budget_timeout_error = ClientTimeoutError(
+                    method=executing_method,
+                    operation=operation,
+                )
+                return await execute_with_retry(
+                    execute_session,
+                    retry_policy,
+                    budget_timeout_error,
+                )
         finally:
             method = None  # type: ignore[assignment]
             executing_method = None  # type: ignore[assignment]
             options = None
             request_options = RequestOptions()
+            transport_options = RequestOptions()
+            retry_policy = None
+            budget_timeout_error = None
+            execute_session = cast("Callable[[], Awaitable[ResultT]]", None)
             returning = None
-            handler = cast("APIMiddlewareCallNext[ResultT]", None)
-            component = None
 
         if setup_failure is None:
             raise AssertionError("Client request setup completed without a result")
         raise setup_failure from None
-
-    def _wrap_middleware[ResultT](
-        self,
-        middleware: APIMiddleware,
-        call_next: APIMiddlewareCallNext[ResultT],
-        *,
-        operation: APIOperation,
-        http_method: HTTPMethod,
-    ) -> APIMiddlewareCallNext[ResultT]:
-        async def wrapped_handler(
-            *,
-            options: RequestOptions | None = None,
-        ) -> ResultT:
-            request_options = options if options is not None else RequestOptions()
-            context = APIMiddlewareContext(
-                operation=operation,
-                http_method=http_method,
-                options=request_options,
-            )
-
-            async def next_handler(
-                *,
-                options: RequestOptions | None = None,
-            ) -> ResultT:
-                next_options = options if options is not None else request_options
-                try:
-                    return await call_next(options=next_options)
-                finally:
-                    options = None
-                    next_options = RequestOptions()
-
-            try:
-                return await middleware(
-                    next_handler,
-                    context,
-                )
-            finally:
-                options = None
-                request_options = RequestOptions()
-                context = None  # type: ignore[assignment]
-
-        return wrapped_handler
 
     async def __aenter__(self) -> Self:
         if self._context_stack is not None:
@@ -220,8 +154,6 @@ class Client:
             async with entry_stack:
                 await entry_stack.enter_async_context(self.storage)
                 await entry_stack.enter_async_context(self.session)
-                for component in self._middleware:
-                    await entry_stack.enter_async_context(component)
                 entry_stack.enter_context(use_current_client(self))
                 self._context_stack = entry_stack.pop_all()
         except BaseException:

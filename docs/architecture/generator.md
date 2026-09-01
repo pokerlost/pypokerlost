@@ -57,9 +57,9 @@ available to generated Pydantic models.
 
 ## Operation model and rendering
 
-Each selected API operation is reduced to a transport method, API operation name, request object
-schema, result schema, generated class name, and module name. Operations and all rendered imports,
-exports, fields, constraints, and files use stable ordering.
+Each selected API operation is reduced to a transport method, API operation name, request media
+type and object schema, result schema, generated class name, and module name. Operations and all
+rendered imports, exports, fields, constraints, and files use stable ordering.
 
 The renderer emits:
 
@@ -67,6 +67,10 @@ The renderer emits:
 - referenced API object classes based on `PokerlostType`;
 - PEP 695 aliases for generated non-model types;
 - focused `__init__.py` facades for each service method and type package.
+
+Exact SDK-owned authorization component schemas reuse their public shared classes and aliases.
+Those components are not rendered into the service type package. A same-named incompatible schema
+fails closed.
 
 Generated source includes no timestamps. Its header records the generator version, service ID,
 OpenAPI contract version, and canonical contract SHA-256, so equal validated inputs produce equal
@@ -88,7 +92,7 @@ layout, manual-file protection, and migration policy are in
 
 The generator lives under `scripts/` and is development tooling. It reuses focused public SDK
 contracts such as `Response`, `HTTPMethod`, `APIOperation`, `PokerlostMethod`, and `PokerlostType`,
-but it does not instantiate `Client`, `Application`, sessions, middleware, storage, request
+but it does not instantiate `Client`, `Application`, sessions, storage, request
 builders, or response handlers.
 
 Generated modules depend only on the runtime package and declared runtime dependencies. They never

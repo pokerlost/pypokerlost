@@ -16,14 +16,14 @@ a runtime console script.
 
 ## Version
 
-The current generator version is `1.1.0`:
+The current generator version is `1.2.0`:
 
 ```bash
 uv run python scripts/generate_methods.py --version
 ```
 
 ```text
-1.1.0
+1.2.0
 ```
 
 Use `-h` or `--help` globally or after a command for Typer help.
@@ -89,7 +89,7 @@ This command fetches `GET /contract.getOpenAPI`. The selected operation must hav
 `namespace.someOperation` shape; `accounts.get_self`, `accounts.self.get`, and uppercase initials
 are rejected before any request. The endpoint must return the document inside the fixed PokerLost
 response envelope. Service mode uses a directly scoped development-time HTTP client; it does not
-use the runtime SDK `Client` or its middleware, session, or storage.
+use the runtime SDK `Client`, session, or storage.
 
 ## Verify committed output
 

@@ -50,10 +50,12 @@ The focused facade exports these aliases:
 from pypokerlost.types import (
     APIBase,
     HTTPMethod,
+    HTTPRequestContentType,
     JSONDumps,
     JSONLoads,
     JSONScalar,
     JSONValue,
+    OAuthScope,
     APIOperation,
     StorageKey,
     StorageTTL,
@@ -64,16 +66,18 @@ from pypokerlost.types import (
 |---|---|
 | `APIBase` | Strict HTTP(S) URL string without user information, a query, or a fragment; normalized without a trailing slash. |
 | `HTTPMethod` | `"GET"`, `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"`. |
+| `HTTPRequestContentType` | Standard JSON or form request-body media type. |
 | `APIOperation` | Exactly `namespace.someOperation`: two ASCII alphanumeric segments with lowercase initials and exactly one dot. |
 | `JSONDumps` | Callable JSON encoder returning `str`. |
 | `JSONLoads` | Callable dynamic JSON decoder. |
 | `JSONScalar` | Boolean, integer, finite float, string, or `None`. |
 | `JSONValue` | Exact built-in JSON scalars, lists, and string-keyed dictionaries. |
+| `OAuthScope` | At least two dot-separated lowerCamelCase ASCII identifier segments. |
 | `StorageKey` | Strict non-empty string containing at least one non-whitespace character. |
 | `StorageTTL` | Strict `int`, `float`, `timedelta`, or `None`; accepted values normalize to positive finite seconds. |
 
-`HTTPMethod` is a literal type, not an enum. The current runtime public type surface defines no
-project-owned enum classes.
+`HTTPMethod` and `HTTPRequestContentType` are literal types, not enums. Shared authorization enums
+are exported from `pypokerlost.contracts.authorization`.
 
 ## JSON boundaries
 

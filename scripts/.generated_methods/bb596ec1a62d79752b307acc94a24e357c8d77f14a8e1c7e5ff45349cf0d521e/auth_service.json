@@ -1,0 +1,14 @@
+{
+  "files": [
+    "methods/auth_service/__init__.py",
+    "methods/auth_service/oauth_token_method.py",
+    "types/auth_service/__init__.py",
+    "types/auth_service/_types.py"
+  ],
+  "generator_version": "1.2.0",
+  "manifest_version": 2,
+  "openapi_version": "0.1.0",
+  "service_id": "authService",
+  "service_package": "auth_service",
+  "source_sha256": "70deafbe7dcaf0c400d6bcfacc627b8cfe68da68e868826026c71caeeabca568"
+}

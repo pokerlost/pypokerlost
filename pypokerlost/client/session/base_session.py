@@ -11,7 +11,7 @@ from pypokerlost.client.request import RequestBuilder, RequestOptions
 from pypokerlost.client.response import BaseResponseHandler
 from pypokerlost.exceptions import ClientRequestError
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.types import APIOperation, HTTPMethod
+from pypokerlost.types import APIOperation, HTTPMethod, HTTPRequestContentType
 
 DEFAULT_TIMEOUT = 10
 
@@ -71,6 +71,7 @@ class BaseSession(abc.ABC):
         *,
         operation: APIOperation,
         http_method: HTTPMethod,
+        content_type: HTTPRequestContentType,
         returning: object,
         timeout: int | None = None,
         options: RequestOptions | None = None,
@@ -86,6 +87,7 @@ class BaseSession(abc.ABC):
                 metadata = {
                     "__api_method__": operation,
                     "__http_method__": http_method,
+                    "__request_content_type__": content_type,
                     "__returning__": returning,
                 }
                 if any(

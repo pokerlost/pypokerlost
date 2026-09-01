@@ -5,9 +5,9 @@ typed `PokerlostMethod`.
 
 ## Minimal call
 
-The core repository intentionally ships no concrete service methods. `ExampleResult` and
-`ExampleMethod` below are small illustrations of the classes normally generated from a service
-OpenAPI contract; every import in the example is a real public SDK import.
+The repository tracks `pypokerlost.methods.auth_service.OAuthTokenMethod` from the authService
+OpenAPI contract. `ExampleResult` and `ExampleMethod` below illustrate the same generated base
+shape for a simple JSON operation; every import in the example is a real public SDK import.
 
 ```python
 from __future__ import annotations
@@ -46,11 +46,10 @@ asyncio.run(main())
 request to `http://127.0.0.1:8000/echo.sendMessage`. The endpoint must return the fixed PokerLost
 JSON envelope, and the successful `result` must match `ExampleResult`.
 
-This minimal client has no outbound middleware and makes one transport attempt. A concrete service
-that needs service authentication constructs one lifespan-owned target client with
-`ClientCredentialsTokenProvider`, `RetryMiddleware`, and `BearerTokenMiddleware` in the order
-documented in `docs/api/middleware.md`. Retry remains disabled until a replay-safe call explicitly
-passes `RequestOptions(retry=RetryPolicy(...))`.
+This minimal call makes one transport attempt. A service-owned adapter may add an already-resolved
+authorization value through generic `RequestOptions` headers. Retry remains disabled until a
+replay-safe call explicitly passes `RequestOptions(retry=PokerLostRetryPolicy())`; see
+`docs/api/retry.md`.
 
 ## Generated service packages
 

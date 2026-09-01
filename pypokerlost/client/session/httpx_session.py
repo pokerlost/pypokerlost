@@ -6,6 +6,7 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Never
+from urllib.parse import urlencode
 
 import httpx
 
@@ -20,13 +21,30 @@ from pypokerlost.exceptions import (
     PokerlostError,
 )
 from pypokerlost.methods import PokerlostMethod
-from pypokerlost.types import APIOperation, HTTPMethod, JSONDumps, JSONLoads, JSONValue
+from pypokerlost.types import (
+    APIOperation,
+    HTTPMethod,
+    HTTPRequestContentType,
+    JSONDumps,
+    JSONLoads,
+    JSONValue,
+)
 
 from .base_session import DEFAULT_TIMEOUT, BaseSession
 
 
 def _strict_json_dumps(value: JSONValue) -> str:
     return json.dumps(value, allow_nan=False)
+
+
+def _form_urlencode(data: dict[str, JSONValue]) -> str:
+    for value in data.values():
+        if type(value) is str:
+            continue
+        if type(value) is list and all(type(item) is str for item in value):
+            continue
+        raise TypeError("Form request values must be strings or lists of strings")
+    return urlencode(sorted(data.items()), doseq=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,11 +115,12 @@ class HttpxSession(BaseSession):
     ) -> ResultT:
         operation: APIOperation | None = None
         http_method: HTTPMethod | None = None
+        content_type: HTTPRequestContentType | None = None
         returning: object | None = None
         setup_failure: ClientRequestError | None = None
         try:
             try:
-                operation, http_method = self.request_builder.describe(method)
+                operation, http_method, content_type = self.request_builder.describe(method)
                 returning = method.__returning__
             except Exception:
                 setup_failure = ClientRequestError(
@@ -110,12 +129,18 @@ class HttpxSession(BaseSession):
                 )
 
             if setup_failure is None:
-                if operation is None or http_method is None or returning is None:
+                if (
+                    operation is None
+                    or http_method is None
+                    or content_type is None
+                    or returning is None
+                ):
                     raise AssertionError("HTTP request metadata is incomplete")
                 return await self._make_request_with_metadata(
                     method,
                     operation=operation,
                     http_method=http_method,
+                    content_type=content_type,
                     returning=returning,
                     timeout=timeout,
                     options=options,
@@ -135,6 +160,7 @@ class HttpxSession(BaseSession):
         *,
         operation: APIOperation,
         http_method: HTTPMethod,
+        content_type: HTTPRequestContentType,
         returning: object,
         timeout: int | None = None,
         options: RequestOptions | None = None,
@@ -148,6 +174,7 @@ class HttpxSession(BaseSession):
                 method=method,
                 operation=operation,
                 http_method=http_method,
+                content_type=content_type,
                 options=request_options,
             )
             if isinstance(payload_outcome, _RequestFailure):
@@ -175,6 +202,7 @@ class HttpxSession(BaseSession):
         method: PokerlostMethod[ResultT],
         operation: APIOperation,
         http_method: HTTPMethod,
+        content_type: HTTPRequestContentType,
         options: RequestOptions,
     ) -> _PayloadOutcome:
         try:
@@ -183,10 +211,14 @@ class HttpxSession(BaseSession):
                 options=options,
                 operation=operation,
                 http_method=http_method,
+                content_type=content_type,
             )
-            serialized = self._json_dumps(request.data)
-            if not isinstance(serialized, str):
-                raise TypeError("json_dumps must return str")
+            if request.content_type == "application/json":
+                serialized = self._json_dumps(request.data)
+                if not isinstance(serialized, str):
+                    raise TypeError("json_dumps must return str")
+            else:
+                serialized = _form_urlencode(request.data)
             return _PreparedPayload(
                 content=serialized.encode("utf-8"),
                 headers=request.headers,

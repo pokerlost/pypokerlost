@@ -15,11 +15,11 @@ contracts, and maintainer workflows for `pypokerlost`.
 - `docs/api/types.md`
 - `docs/api/methods.md`
 - `docs/api/transport.md` — request options, transport, envelope decoding, and Retry-After.
-- `docs/api/middleware.md` — outbound middleware, client-credentials authentication, and
-  explicit bounded retry.
+- `docs/api/authorization-contracts.md` — shared scopes, token results, claims, and verified
+  authorization contexts.
+- `docs/api/retry.md` — the canonical explicit bounded transport retry policy.
 - `docs/api/storage.md`
 - `docs/api/api-server.md`
-- `docs/api/openapi-extra.md`
 
 ## Architecture
 

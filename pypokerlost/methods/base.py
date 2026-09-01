@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import ConfigDict
 
-from pypokerlost.types import APIOperation, HTTPMethod, PokerlostType
+from pypokerlost.types import (
+    APIOperation,
+    HTTPMethod,
+    HTTPRequestContentType,
+    PokerlostType,
+)
 
 if TYPE_CHECKING:
     from pypokerlost.client.client import Client
@@ -26,6 +31,7 @@ class PokerlostMethod[ResultT](PokerlostType, abc.ABC):
     )
 
     __http_method__: ClassVar[HTTPMethod] = "POST"
+    __request_content_type__: ClassVar[HTTPRequestContentType] = "application/json"
 
     @property
     @abc.abstractmethod

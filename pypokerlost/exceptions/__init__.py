@@ -16,7 +16,6 @@ from pypokerlost.exceptions.client import (
     ClientRequestError,
     ClientStateError,
     ClientTimeoutError,
-    MiddlewareConfigurationError,
 )
 from pypokerlost.exceptions.storage import StorageError, StorageKeyNotFoundError
 
@@ -29,7 +28,6 @@ __all__ = (
     "ClientRequestError",
     "ClientStateError",
     "ClientTimeoutError",
-    "MiddlewareConfigurationError",
     "PokerlostAPIError",
     "PokerlostError",
     "PokerlostProtocolError",

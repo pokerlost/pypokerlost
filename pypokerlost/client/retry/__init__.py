@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from .retry_policy import RetryPolicy
+from .retry_policy import PokerLostRetryPolicy
 
-__all__ = ("RetryPolicy",)
+__all__ = ("PokerLostRetryPolicy",)
