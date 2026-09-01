@@ -18,7 +18,7 @@ development-time generation tooling shared by PokerLost service consumers.
 | Generated layout split | Implemented | Requests live under `pypokerlost.methods`; returned and nested API objects live under `pypokerlost.types`. |
 | Concrete service packages | Not shipped here | Services generate or maintain their own method and type packages. |
 
-The current SDK package version is `0.2.0`; the current generator version is `1.2.0`.
+The current SDK package version is `0.2.0`; the current generator version is `1.2.1`.
 
 ## Not implemented in the core
 

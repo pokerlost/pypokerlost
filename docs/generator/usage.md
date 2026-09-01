@@ -16,14 +16,14 @@ a runtime console script.
 
 ## Version
 
-The current generator version is `1.2.0`:
+The current generator version is `1.2.1`:
 
 ```bash
 uv run python scripts/generate_methods.py --version
 ```
 
 ```text
-1.2.0
+1.2.1
 ```
 
 Use `-h` or `--help` globally or after a command for Typer help.

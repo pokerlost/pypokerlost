@@ -72,7 +72,7 @@ from pypokerlost.types import (
     OAuthScope,
 )
 
-GENERATOR_VERSION_TEXT = "1.2.0"
+GENERATOR_VERSION_TEXT = "1.2.1"
 DEFAULT_OUTPUT = Path("pypokerlost")
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_DIRECTORY = REPOSITORY_ROOT / "scripts" / ".generated_methods"
@@ -2186,15 +2186,18 @@ class MethodGenerator:
         ]
         if imports:
             lines.extend(("", render_imports(imports)))
-        lines.extend(
-            (
-                "",
-                "__all__ = [",
-                *(f'    "{name}",' for name in exports),
-                "]",
-                "",
+        if exports:
+            lines.extend(
+                (
+                    "",
+                    "__all__ = [",
+                    *(f'    "{name}",' for name in exports),
+                    "]",
+                    "",
+                )
             )
-        )
+        else:
+            lines.extend(("", "__all__ = []", ""))
         return "\n".join(lines)
 
     def _generated_header(self) -> str:

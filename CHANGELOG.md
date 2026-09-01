@@ -8,3 +8,4 @@
 - Generated `OAuthTokenMethod` from the standard authService form and response contract.
 - Replaced configurable retry variants with one fixed, explicit `PokerLostRetryPolicy`.
 - Removed project-owned route metadata helpers in favor of standard OpenAPI primitives.
+- Made empty generated type facades stable under the repository formatter and fixed-point checks.

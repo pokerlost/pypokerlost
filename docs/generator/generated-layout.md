@@ -110,7 +110,7 @@ Without `--force`, OpenAPI `info.version` cannot decrease relative to the stored
 canonical source hash changes, version precedence must increase. A version increase with unchanged
 content is allowed, as is unchanged content at the same version.
 
-The current generator version is `1.2.0`. Generator versioning follows SemVer: `MAJOR` covers an
+The current generator version is `1.2.1`. Generator versioning follows SemVer: `MAJOR` covers an
 incompatible generated layout, generated public API, manifest format, or CLI change; `MINOR` covers
 backward-compatible OpenAPI or optional CLI capability; `PATCH` covers fixes that preserve those
 contracts.
