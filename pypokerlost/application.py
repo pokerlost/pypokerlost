@@ -67,20 +67,20 @@ class PokerlostApplication:
 
     async def run_async[ResultT](
         self,
-        entrypoint: Callable[[PokerlostClient], Awaitable[ResultT]],
+        entrypoint: Callable[..., Awaitable[ResultT]],
     ) -> ResultT:
         async with self as client:
             return await entrypoint(client)
 
     def run[ResultT](
         self,
-        entrypoint: Callable[[PokerlostClient], Awaitable[ResultT]],
+        entrypoint: Callable[..., Awaitable[ResultT]],
     ) -> ResultT | None:
         return asyncio.run(self._run_with_signals(entrypoint))
 
     async def _run_with_signals[ResultT](
         self,
-        entrypoint: Callable[[PokerlostClient], Awaitable[ResultT]],
+        entrypoint: Callable[..., Awaitable[ResultT]],
     ) -> ResultT | None:
         async with SignalController() as signals:
             entrypoint_task = asyncio.create_task(self.run_async(entrypoint))

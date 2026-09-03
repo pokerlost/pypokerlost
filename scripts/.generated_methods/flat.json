@@ -3,17 +3,17 @@
     "methods/__init__.py",
     "types/__init__.py"
   ],
-  "generator_version": "2.0.0",
-  "manifest_version": 3,
+  "generator_version": "3.0.0",
+  "manifest_version": 4,
   "sources": [
     {
       "openapi_version": "0.1.0",
-      "source_sha256": "7dc15fc01ff5f6314eb67b3ad242936ef6f7d79d49682e6d4613d14cd9d8918c",
+      "source_sha256": "a5710e45ef36e097f8c762f7782ef90969e630649da4dc3576d5a4032f73e532",
       "title": "accountsService"
     },
     {
       "openapi_version": "0.1.0",
-      "source_sha256": "03677b43358da96a23d584ea8d5c3594bead9aecf58737971bf4e798047c9170",
+      "source_sha256": "44cb224011b260aac703ad0b7639bbb4b067f753a5a7dca18635b966a4540c8d",
       "title": "authService"
     }
   ]

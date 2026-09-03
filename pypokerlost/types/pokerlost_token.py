@@ -12,13 +12,14 @@ from pydantic import (
     StringConstraints,
 )
 
-from .pokerlost_scope import PokerlostScope, canonicalize_pokerlost_scopes
+from pypokerlost.enums import PokerlostScopes
+
+from ._scope_set import parse_scope_set
+from .pokerlost_audience import PokerlostAudience
 
 
-def _canonical_scopes(value: object) -> tuple[PokerlostScope, ...]:
-    if not isinstance(value, (list, tuple, frozenset)):
-        raise ValueError("Token scopes must be an immutable tuple or a JSON array")
-    return canonicalize_pokerlost_scopes(value)
+def _canonical_scopes(value: object) -> tuple[PokerlostScopes, ...]:
+    return parse_scope_set(value, field_name="Token scopes")
 
 
 class PokerlostToken(BaseModel):
@@ -41,7 +42,7 @@ class PokerlostToken(BaseModel):
     )
     expires_in: Annotated[int, Field(strict=True, gt=0)]
     scopes: Annotated[
-        tuple[PokerlostScope, ...],
+        tuple[PokerlostScopes, ...],
         BeforeValidator(_canonical_scopes),
     ]
-    audience: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    audience: PokerlostAudience

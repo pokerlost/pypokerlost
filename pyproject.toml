@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pypokerlost"
 version = "0.2.0"
-description = "Asynchronous Python SDK for the body-only Pokerlost JSON protocol"
+description = "Asynchronous Python SDK for the Pokerlost JSON protocol"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

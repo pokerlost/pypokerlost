@@ -1,71 +1,51 @@
 # Quickstart
 
-Create a target-specific `PokerlostClient` and execute one typed body-only method.
-
-## Public token call
+An initial token is an explicit orchestration step:
 
 ```python
-from __future__ import annotations
-
-import asyncio
+from uuid import UUID
 
 from pypokerlost import PokerlostClient
 from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.enums import PokerlostScopes
 from pypokerlost.methods import GetToken
-from pypokerlost.session import HttpxSession
 
 
-async def main() -> None:
-    auth_session = HttpxSession(
-        api_server=PokerlostAPIServer("https://auth.example.internal"),
-    )
-    async with PokerlostClient(session=auth_session) as auth_client:
-        token = await auth_client(
-            GetToken(
-                client_id="service-client-id",
-                client_secret="loaded-by-the-consumer",
-                scopes=("accounts.self.read",),
-                audience="accountsService",
-            )
+async with PokerlostClient(
+    server=PokerlostAPIServer("https://auth.example.internal"),
+) as auth_client:
+    token = await auth_client(
+        GetToken(
+            client_id=UUID("2f64e790-0cf0-4de2-8fb2-5d8cf169ee42"),
+            client_secret="loaded-by-the-consumer",
+            scopes=(PokerlostScopes.ACCOUNTS_SELF_GET_ME,),
+            audience="accountsService",
         )
-        print(token.expires_in)
-
-
-asyncio.run(main())
+    )
 ```
 
-The call sends `POST /getToken` with a `PokerlostRequest` JSON body. Credentials are fields inside
-`payload`; the project creates no authentication header or form body.
-
-## Protected client composition
-
-The consumer provides a `PokerlostTokenStore` implementation and loads its credentials outside the
-SDK:
+The consumer validates the result and persists encrypted `PokerlostStoredToken` state through its
+shared store implementation. It then composes a protected target client:
 
 ```python
 from pypokerlost import PokerlostClient
-from pypokerlost.middleware import PokerlostAuthorizationMiddleware
-from pypokerlost.types import PokerlostClientCredentials
+from pypokerlost.middleware import PokerlostAuthenticationMiddleware
 
-authorization = PokerlostAuthorizationMiddleware(
-    auth_client=auth_client,
+authentication = PokerlostAuthenticationMiddleware(
     token_store=token_store,
-    credentials=PokerlostClientCredentials(
-        client_id=client_id,
-        client_secret=client_secret,
-    ),
+    token_refresher=token_refresher,
+    client_id="2f64e790-0cf0-4de2-8fb2-5d8cf169ee42",
     audience="accountsService",
 )
 business_client = PokerlostClient(
-    session=business_session,
-    middleware=(authorization,),
+    server=accounts_server,
+    middleware=(authentication,),
 )
 ```
 
-The middleware reads exact scopes from each method. Public calls bypass it. Protected calls acquire
-or reuse a token and send it only in `authorization.access_token` inside the JSON body.
+The SDK never receives the client secret in middleware and never calls `GetToken` automatically.
+Public methods bypass token state. Protected methods load exact UTC/versioned state and send the
+token only in the bearer header.
 
-Retry remains disabled until one call passes a `PokerlostRequestOptions` containing
+Retry remains disabled unless the call supplies `PokerlostRequestOptions` with
 `PokerlostRetryPolicy()`.
-
-See `docs/api/body-authorization.md`, `docs/api/retry.md`, and `docs/index.md`.

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
 from uuid import UUID
 
-from pypokerlost.types import (
-    IssueLoginGrantResponse,
-    PokerlostOperation,
-    PokerlostScope,
-)
+from pypokerlost.enums import PokerlostScopes
+from pypokerlost.types import IssueLoginGrantResponse, PokerlostOperation
 
 from .base import PokerlostMethod
 
@@ -17,7 +15,9 @@ class IssueLoginGrant(PokerlostMethod[IssueLoginGrantResponse]):
     """Call issueLoginGrant when authService implements the endpoint."""
 
     operation = PokerlostOperation("issueLoginGrant")
-    required_scopes = (PokerlostScope("auth.internal.issueLoginGrant"),)
+    __scopes__: ClassVar[tuple[PokerlostScopes, ...] | None] = (
+        PokerlostScopes.AUTH_INTERNAL_ISSUE_LOGIN_GRANT,
+    )
     returning = IssueLoginGrantResponse
 
     business_operation_id: UUID

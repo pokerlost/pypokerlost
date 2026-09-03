@@ -1,64 +1,53 @@
 # pypokerlost
 
-`pypokerlost` is the typed asynchronous SDK for the private Pokerlost JSON protocol over HTTPS.
-
-## Purpose
-
-Provide one small Python interface for typed Pokerlost operation calls, canonical request and
-response envelopes, body-only token coordination, bounded opt-in retry, and OpenAPI-to-SDK
-generation while keeping service business policy outside the package.
+`pypokerlost` is the typed asynchronous SDK for Pokerlost's JSON protocol over HTTPS.
 
 ## Responsibilities
 
-- Own `PokerlostClient`, session targeting, JSON POST transport, response decoding, and canonical
-  safe errors.
-- Own flat typed methods and flat wire/value models.
-- Own `PokerlostRequest`, `PokerlostAuthorizedRequest`, and `PokerlostResponse`.
-- Own exact operation and scope validation.
-- Own the retry and authorization middleware pipeline.
-- Own the behavior-only `PokerlostTokenStore` port and monotonic token state.
-- Own public body-only `GetToken` and `RefreshToken` calls plus explicitly documented
-  future-facing auth method stubs.
-- Own development-time generation from one or more OpenAPI 3.1 JSON documents.
-- Coordinate one client lifecycle through `PokerlostApplication`.
+- Own `PokerlostClient.__call__`, HTTP transport, canonical response decoding, and safe errors.
+- Own flat typed methods, types, and enums.
+- Own the pure `PokerlostRequest` and canonical `PokerlostResponse` envelopes.
+- Own internal `Authorization: Bearer` injection for protected calls.
+- Own bounded opt-in retry and one narrow reactive expired-token recovery boundary.
+- Define persistent/shared `PokerlostTokenStore` and service-owned `PokerlostTokenRefresher` ports.
+- Own the explicit shared `PokerlostScopes` catalog and validate protected operation scopes against
+  it while generating exact method `__scopes__` metadata from standard OpenAPI security.
 
-## Protocol rules
+## Protocol
 
-- Every business operation is `POST /<operationId>` with one JSON request and one JSON response.
-- A public operation sends only `{"payload": ...}`.
-- A protected operation sends `{"authorization": {"access_token": ...}, "payload": ...}`.
-- Token acquisition and refresh secrets exist only inside their JSON payloads.
-- Project-owned code has no caller-facing or internal generic HTTP-header API.
-- The response body is always `PokerlostResponse[ResultT]`; retry delay is its `retry_after` field.
-- Production API targets use HTTPS. Loopback HTTP exists only for local development.
-- This transport is private to Pokerlost and is not a standards-compatible OAuth2 wire protocol.
+- Every business operation is `POST /<operation>` with one JSON request and response.
+- The JSON request is always `{"payload": ...}`; authentication never appears in it.
+- Protected calls add only `Authorization: Bearer <access-token>` at the transport adapter.
+- The response body always has `ok`, `result`, `error`, `error_message`, and `retry_after`.
+- No generic headers API, cookie authentication, query token, alternate envelope, or response
+  metadata side channel exists.
 
-## Authorization and retry boundaries
+## Authentication boundary
 
-- Method `required_scopes` is the exact outbound scope request; public methods use an empty tuple.
-- `PokerlostAuthorizationMiddleware` coordinates token reuse, acquisition, refresh, single-flight
-  locking, storage calls, and body injection.
-- Consumers supply credentials, audience, and a `PokerlostTokenStore` implementation.
-- The SDK does not ship production token persistence, credential loading, token signing, local
-  verification, JWKS policy, role expansion, or service authorization decisions.
-- Authentication failure invalidates state for a later independent call; the failed call is not
-  replayed. Insufficient scope does not trigger refresh.
-- Retry is explicit per logical call through `PokerlostRequestOptions.retry_policy`.
-- Retry never creates or changes business operation IDs and never establishes mutation safety.
+- A concrete method uses `None` for no access-token scopes or a non-empty tuple of exact
+  `PokerlostScopes` members. Empty and missing metadata are invalid.
+- The middleware loads exact shared state by client identity, audience, and canonical scopes.
+- Missing state never causes automatic acquisition. Consumers explicitly call `GetToken` and
+  persist validated state before protected clients start.
+- Only exact `POKERLOST_ACCESS_TOKEN_EXPIRED` may invoke the injected refresher once. Local UTC
+  expiry metadata does not trigger refresh by itself; the original request may be replayed once
+  with the refreshed token.
+- Persistent implementations own encryption, CAS, bounded cross-process leases, and refresh-token
+  rotation safety without holding a database transaction across network I/O.
 
 ## Generator boundary
 
-- Generated method and type files are flat and globally named across every input document.
-- Generation validates all supplied documents before writing and fails on global name collisions.
-- Exact protected scopes are supplied outside OpenAPI or retained from an existing hand-written
-  method.
-- OpenAPI body schemas show the access-token field but cannot express exact body-token scopes with
-  a standard security scheme.
-- Manual SDK stubs call ordinary endpoints when those endpoints exist; they never return synthetic
-  results and do not imply server implementation.
+- A service with no protected operations may omit `components.securitySchemes`; its public methods
+  use `__scopes__ = None`.
+- A protected operation requires a supported standard OAuth2 client-credentials scheme and one
+  exact non-empty security requirement whose scopes all exist in `PokerlostScopes`.
+- The generator neither infers planned operations from incomplete service documents nor rewrites
+  the SDK-owned scope catalog. Explicit future-facing stubs remain outside its manifest until a
+  compatible production route exists.
 
 ## Non-responsibilities
 
-The SDK does not own service databases, domain workflows, account or authentication server
-implementations, production token storage, credentials, JWT signing or verification, background
-workers, gateways, service discovery, business idempotency, reconciliation, or deployment policy.
+The SDK does not own client credential storage, token acquisition orchestration, background
+refresh, production persistence, encryption keys, JWT signing/verification, service policy,
+databases, business idempotency, routes, or deployment configuration. Authorization is scope-only;
+there is no role lifecycle or role claim.

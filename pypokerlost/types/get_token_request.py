@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
-    StringConstraints,
+    SecretStr,
 )
 
-from .pokerlost_scope import PokerlostScope, canonicalize_pokerlost_scopes
+from pypokerlost.enums import PokerlostScopes
+
+from ._scope_set import parse_scope_set
+from .pokerlost_audience import PokerlostAudience
 
 
-def _canonical_scopes(value: object) -> tuple[PokerlostScope, ...]:
-    if not isinstance(value, (list, tuple, frozenset)):
-        raise ValueError("Requested scopes must be a tuple or JSON array")
-    return canonicalize_pokerlost_scopes(value)
+def _canonical_scopes(value: object) -> tuple[PokerlostScopes, ...]:
+    return parse_scope_set(value, field_name="Requested scopes")
 
 
 class GetTokenRequest(BaseModel):
@@ -32,13 +34,10 @@ class GetTokenRequest(BaseModel):
         hide_input_in_errors=True,
     )
 
-    client_id: Annotated[str, StringConstraints(strict=True, min_length=1)]
-    client_secret: Annotated[
-        str,
-        StringConstraints(strict=True, min_length=1),
-    ] = Field(repr=False)
+    client_id: UUID = Field(strict=False)
+    client_secret: SecretStr = Field(min_length=1, repr=False)
     scopes: Annotated[
-        tuple[PokerlostScope, ...],
+        tuple[PokerlostScopes, ...],
         BeforeValidator(_canonical_scopes),
-    ]
-    audience: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    ] = Field(min_length=1)
+    audience: PokerlostAudience

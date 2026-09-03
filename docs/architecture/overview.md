@@ -1,71 +1,41 @@
 # Architecture overview
 
-`pypokerlost` owns one private JSON operation-call protocol, one typed client pipeline, flat methods
-and types, canonical errors, authorization middleware, retry middleware, and development-time
-OpenAPI generation.
-
-## Runtime flow
+`pypokerlost` owns one typed call pipeline, flat SDK contracts, standard bearer-header injection,
+canonical errors, bounded retry, narrow reactive refresh, and development-time OpenAPI generation.
 
 ```text
 PokerlostMethod
-→ PokerlostClient
-→ PokerlostRetryMiddleware
-→ PokerlostAuthorizationMiddleware, when configured
-→ PokerlostRequestBuilder
-→ HttpxSession POST JSON transport
+→ direct __scopes__ validation
+→ PokerlostAuthenticationMiddleware for protected calls
+→ PokerlostRetryMiddleware when opted in
+→ one private immutable call
+→ HttpxSession JSON + optional Authorization Bearer
 → PokerlostResponse decoder
-→ typed result or canonical error
+→ typed result or safe canonical error
 ```
 
-The client always installs the retry layer outermost. Its policy remains inactive unless the call
-provides `PokerlostRequestOptions.retry_policy`. Authorization is inside retry so every attempt can
-obtain current token state without replaying an authentication failure.
+A public method has `__scopes__ is None` and bypasses token state. A protected method has a
+non-empty exact tuple of SDK-owned `PokerlostScopes` members. Missing or empty metadata is never
+normalized to public.
 
-## Runtime ownership
+Generic retry encloses authentication so its one logical-call budget includes persistent shared
+UTC/versioned state loading and one service-owned refresh. A task-local claim remains consumed
+across retry attempts. Authentication never loads credentials or automatically acquires an initial
+token. Exact expiration can replay the unchanged request once because services must reject expired
+tokens before handler entry.
 
-| Owner | Responsibility |
-| --- | --- |
-| `PokerlostMethod` | Strict payload fields, operation, exact required scopes, and result type. |
-| `PokerlostClient` | Session ownership, request preparation, middleware composition, and context. |
-| `PokerlostRequestOptions` | Optional per-call retry policy only. |
-| `PokerlostAuthorizationMiddleware` | Token reuse, acquisition, refresh, storage coordination, and body injection. |
-| `PokerlostRetryMiddleware` | Bounded opt-in retry from canonical exceptions. |
-| `PokerlostRequestBuilder` | Public request envelope plus private call metadata binding. |
-| `HttpxSession` | HTTPS target, POST JSON I/O, decoding, and result validation. |
-| `PokerlostResponse` | The only response envelope. |
-| `PokerlostApplication` | One client lifecycle and one synchronous entrypoint. |
-
-## Public and protected calls
-
-A public method has `required_scopes = ()`. It bypasses token storage and reaches transport as
-`PokerlostRequest`. A protected method lists exact `PokerlostScope` values. Without authorization
-middleware it fails locally; with middleware it reaches transport as `PokerlostAuthorizedRequest`.
-
-Token acquisition and refresh are ordinary public calls through a dedicated auth-target client.
-The dedicated client cannot contain authorization middleware, which prevents recursion.
-
-## Protocol boundary
-
-Business calls use `POST /<operationId>` and JSON bodies. Operation IDs are single lowerCamelCase
-verbs; scope IDs are independent dotted lowerCamelCase strings. Project code does not provide a
-generic HTTP metadata channel. Production targets require HTTPS.
-
-The service side verifies access tokens locally through its own verifier adapter. The SDK does not
-sign tokens, fetch keys, load credentials, decide roles, or provide production token persistence.
-
-## Generator flow
+Implemented OpenAPI operations are the only generator source. The shared scope catalog is an
+explicit SDK contract:
 
 ```text
-one or more OpenAPI 3.1 JSON documents
-→ global operation and schema preflight
-→ canonical envelope validation
-→ explicit scope resolution
-→ flat method/type rendering
-→ manifest-safe write or check
+service-local Scopes
+→ protected route Security(... scopes=[...])
+→ standard OAuth2 OpenAPI security
+→ generator validates against SDK PokerlostScopes
+→ method.__scopes__
 ```
 
-OpenAPI shows body authorization through the request schema. Exact protected scopes remain in
-route source and SDK method metadata because standard security schemes do not describe this private
-body-token contract.
-
-See `docs/index.md`.
+When a document has no protected operations, `components.securitySchemes` may be absent and every
+generated method is public. Once a protected operation exists, the supported standard OAuth2
+scheme and a non-empty exact requirement are mandatory. No scope map, vendor extension,
+role-derived bypass, or body authorization contract exists.

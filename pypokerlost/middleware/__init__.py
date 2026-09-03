@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from .authorization import PokerlostAuthorizationMiddleware, PokerlostTokenStore
-from .base import PokerlostCallNext, PokerlostMiddleware, PokerlostMiddlewareRequest
+from .authentication import (
+    PokerlostAuthenticationMiddleware,
+    PokerlostTokenRefresher,
+    PokerlostTokenStore,
+)
+from .base import PokerlostCallNext, PokerlostMiddleware
 from .retry import PokerlostRetryMiddleware, PokerlostRetryPolicy
 
 __all__ = (
-    "PokerlostAuthorizationMiddleware",
+    "PokerlostAuthenticationMiddleware",
     "PokerlostCallNext",
     "PokerlostMiddleware",
-    "PokerlostMiddlewareRequest",
     "PokerlostRetryMiddleware",
     "PokerlostRetryPolicy",
+    "PokerlostTokenRefresher",
     "PokerlostTokenStore",
 )

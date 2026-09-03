@@ -1,10 +1,7 @@
 # pypokerlost
 
-Typed asynchronous Python SDK for Pokerlost's private body-only JSON protocol over HTTPS.
-
-The SDK provides flat typed methods and types, one response envelope, body-only authorization,
-middleware-based retry, and OpenAPI generation. It does not expose caller-supplied HTTP headers or
-claim compatibility with a standard token wire protocol.
+Typed asynchronous SDK for Pokerlost's JSON protocol with standard bearer-header authentication,
+one response envelope, an explicit shared scope catalog, and bounded opt-in retry.
 
 ## Requirements
 
@@ -17,46 +14,36 @@ claim compatibility with a standard token wire protocol.
 uv sync --locked --all-groups
 ```
 
-Build local distributions with `uv build`. See `docs/getting-started/installation.md`.
-
 ## Public call
 
 ```python
+from uuid import UUID
+
 from pypokerlost import PokerlostClient
 from pypokerlost.client import PokerlostAPIServer
+from pypokerlost.enums import PokerlostScopes
 from pypokerlost.methods import GetToken
-from pypokerlost.session import HttpxSession
 
 
 async def get_service_token() -> None:
-    session = HttpxSession(
-        api_server=PokerlostAPIServer("https://auth.example.internal"),
-    )
-    async with PokerlostClient(session=session) as client:
+    async with PokerlostClient(
+        server=PokerlostAPIServer("https://auth.example.internal"),
+    ) as client:
         token = await client(
             GetToken(
-                client_id="service-client-id",
+                client_id=UUID("2f64e790-0cf0-4de2-8fb2-5d8cf169ee42"),
                 client_secret="loaded-by-the-consumer",
-                scopes=("accounts.self.read",),
+                scopes=(PokerlostScopes.ACCOUNTS_SELF_GET_ME,),
                 audience="accountsService",
             )
         )
         print(token.expires_in)
 ```
 
-`GetToken` is public at the transport layer and sends credentials inside
-`PokerlostRequest.payload`. Protected methods require `PokerlostAuthorizationMiddleware`, which
-places the access token only in `PokerlostAuthorizedRequest.authorization.access_token`.
+`GetToken.__scopes__` is `None`: credentials remain in its typed request payload, but it neither
+loads token state nor sends `Authorization`. Protected methods declare a non-empty exact scope
+tuple whose members belong to the SDK-owned `PokerlostScopes` catalog.
+`PokerlostAuthenticationMiddleware` loads an already persisted token and the transport adds the
+bearer header without changing the JSON body.
 
-## Documentation
-
-- `docs/index.md`
-- `docs/getting-started/quickstart.md`
-- `docs/api/client.md`
-- `docs/api/transport.md`
-- `docs/api/body-authorization.md`
-- `docs/api/retry.md`
-- `docs/generator/usage.md`
-- `docs/project/status.md`
-
-Run `make check` for the regular repository gate and `make check-full` before a release handoff.
+See `docs/index.md`. Run `make check` for the regular gate and `make check-full` before release.

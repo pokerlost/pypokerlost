@@ -1,4 +1,4 @@
-"""Public package facade for the body-only Pokerlost SDK."""
+"""Public package facade for the Pokerlost SDK."""
 
 from __future__ import annotations
 
@@ -8,8 +8,10 @@ from importlib.metadata import version as _distribution_version
 from pypokerlost.application import PokerlostApplication
 from pypokerlost.client import PokerlostClient, PokerlostRequestOptions
 from pypokerlost.errors import (
+    PokerlostAccessTokenExpiredError,
     PokerlostAPIError,
     PokerlostAuthenticationError,
+    PokerlostAuthenticationStateError,
     PokerlostAuthorizationError,
     PokerlostClientError,
     PokerlostConfigurationError,
@@ -28,8 +30,10 @@ except PackageNotFoundError:
 
 __all__ = (
     "PokerlostAPIError",
+    "PokerlostAccessTokenExpiredError",
     "PokerlostApplication",
     "PokerlostAuthenticationError",
+    "PokerlostAuthenticationStateError",
     "PokerlostAuthorizationError",
     "PokerlostClient",
     "PokerlostClientError",

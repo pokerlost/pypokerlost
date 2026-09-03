@@ -1,69 +1,30 @@
 # Methods
 
-`PokerlostMethod[ResultT]` is the strict base for flat typed operation calls.
-
-## Public imports
+Every method is a flat `PokerlostMethod[ResultT]` subclass with direct metadata:
 
 ```python
-from pypokerlost import PokerlostMethod
-from pypokerlost.methods import (
-    AssignPrincipalRole,
-    GetJwks,
-    GetToken,
-    IssueLoginGrant,
-    ProvisionHuman,
-    RefreshToken,
-    SetPrincipalStatus,
-)
-```
+from typing import ClassVar
 
-Methods are imported directly from `pypokerlost.methods`; there are no service subpackages and no
-redundant class suffix.
-
-## Metadata
-
-```python
-from pypokerlost import PokerlostMethod
-from pypokerlost.types import PokerlostOperation, PokerlostScope
+from pypokerlost.enums import PokerlostScopes
+from pypokerlost.methods import PokerlostMethod
+from pypokerlost.types import PokerlostOperation
 
 
 class GetMe(PokerlostMethod[str]):
     operation = PokerlostOperation("getMe")
-    required_scopes = (PokerlostScope("accounts.self.read"),)
+    __scopes__: ClassVar[tuple[PokerlostScopes, ...] | None] = (
+        PokerlostScopes.ACCOUNTS_SELF_GET_ME,
+    )
     returning = str
 ```
 
-The operation must be one single lowerCamelCase identifier. Every business invocation is POST to
-that operation's root path. Public methods declare `required_scopes = ()`; protected methods
-declare the exact canonical tuple.
+No access-token scopes are represented only by `None`. Protected methods use a non-empty,
+duplicate-free tuple in canonical order. Empty or missing metadata fails locally before I/O.
+Every member comes from the explicit SDK-owned `PokerlostScopes` catalog; OpenAPI generation
+validates protected route metadata against that catalog.
 
-Payload fields are ordinary strict Pydantic fields on the method. The request builder serializes
-the entire method as `payload`; method metadata is class-level and never appears in JSON.
-
-## Current auth methods
-
-| Class | Operation | Transport scopes | Server status in this foundation |
-| --- | --- | --- | --- |
-| `GetToken` | `getToken` | public | Implemented by authService. |
-| `RefreshToken` | `refreshToken` | public | Future-facing SDK stub. |
-| `GetJwks` | `getJwks` | public | Future-facing SDK stub. |
-| `ProvisionHuman` | `provisionHuman` | `auth.internal.provisionHuman` | Future-facing SDK stub. |
-| `SetPrincipalStatus` | `setPrincipalStatus` | `auth.internal.setPrincipalStatus` | Future-facing SDK stub. |
-| `AssignPrincipalRole` | `assignPrincipalRole` | `auth.internal.assignPrincipalRole` | Future-facing SDK stub. |
-| `IssueLoginGrant` | `issueLoginGrant` | `auth.internal.issueLoginGrant` | Future-facing SDK stub. |
-
-A stub performs a normal SDK call. It never returns a synthetic result and does not mean that the
-server route, persistence, or workflow already exists.
-
-## Invocation
-
-```python
-result = await client(method)
-result = await client.make_request(method)
-result = await method.emit(client)
-```
-
-Inside an active client context, an unbound method can also be awaited directly. Without an
-explicit or current client, direct awaiting fails locally.
-
-See `docs/api/types.md`, `docs/generator/generated-layout.md`, and `docs/index.md`.
+Current auth contracts are `GetToken`, `RefreshToken`, `GetJwks`, `ProvisionHuman`,
+`SetPrincipalStatus`, `ReplacePrincipalScopes`, and `IssueLoginGrant`. Only `getToken` is currently
+implemented by authService; the others are honest typed network stubs and never return synthetic
+results. `ProvisionHuman` accepts explicit `initial_scopes`; `ReplacePrincipalScopes` replaces an
+exact scope set. No authorization-role operation exists.

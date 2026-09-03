@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from .principal_status import PrincipalStatus
+from pypokerlost.enums import PrincipalStatus
 
 
 class ProvisionHumanResponse(BaseModel):

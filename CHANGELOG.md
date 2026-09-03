@@ -2,15 +2,14 @@
 
 ## Unreleased
 
-- Replaced the previous transport with the private body-only Pokerlost JSON protocol.
-- Renamed project-owned public identifiers to consistent `Pokerlost*` casing without aliases.
-- Added canonical public and protected request envelopes and the five-field `PokerlostResponse`.
-- Moved retry into flat middleware with explicit `retry_policy` opt-in and body `retry_after`.
-- Added authorization middleware with exact-scope token selection, single-flight acquisition,
-  refresh support, body injection, and no automatic authentication-failure replay.
-- Added body-only `GetToken` and `RefreshToken` methods plus typed future-facing auth stubs.
-- Flattened generated methods and types and removed service-named compatibility packages.
-- Updated generation to validate multiple OpenAPI documents together and reject global
-  operation/type collisions before writing.
-- Removed generic caller metadata, form serialization, response side channels, and client-local
-  storage abstractions.
+- Move protected access tokens from JSON bodies to the standard `Authorization: Bearer` header.
+- Make `PokerlostRequest` a pure wire envelope and `PokerlostClient.__call__` the only client
+  execution method.
+- Keep `PokerlostScopes` as the explicit SDK-owned shared catalog and validate generated method
+  `__scopes__` metadata against it; `None` is public and empty tuples are invalid.
+- Allow OpenAPI documents with no protected operations to omit an unused OAuth2 security scheme;
+  protected operations still require standard OAuth2 security metadata.
+- Remove authorization-role contracts and replace principal assignment with exact scope replacement.
+- Replace credential-owning automatic token lifecycle behavior with shared UTC/versioned store and
+  injected refresher ports plus one exact expired-token replay.
+- Preserve body-only `retry_after`, safe protocol status metadata, and malformed gateway retry.

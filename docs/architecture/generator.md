@@ -1,55 +1,30 @@
 # Generator architecture
 
-The development-time generator validates one or more Pokerlost OpenAPI documents as a single
-global input and produces flat SDK sources.
-
-## Pipeline
+The generator validates all OpenAPI 3.1 documents together before any write:
 
 ```text
-OpenAPI JSON documents
-→ parse every document
-→ preflight global public names
-→ validate business operations and envelopes
-→ collect reachable public schemas
-→ resolve exact method scopes
-→ render all files in memory
-→ compare or write manifest-owned files
+documents
+→ protected-operation discovery
+→ conditional standard OAuth2 validation
+→ scope membership validation against SDK PokerlostScopes
+→ global business operation/schema/module preflight
+→ exact operation security validation
+→ flat method/type rendering
+→ manifest-safe write or --check
 ```
 
-No output file changes before global operation and schema preflight succeeds.
+A document with no protected operations may omit `components.securitySchemes`; each of its methods
+receives `__scopes__ = None`. If at least one operation declares security, the document must expose
+the supported standard OAuth2 client-credentials scheme. Each protected operation has exactly one
+requirement referring only to that scheme and at least one scope. Empty lists, unknown or ambiguous
+schemes, unknown scopes, duplicates, and OR alternatives fail.
 
-## Validation
+`pypokerlost/enums/pokerlost_scopes.py` is an explicit SDK-owned catalog, not generated output.
+Every extracted scope must already have an exact member. Generated methods import those members and
+annotate metadata as a `ClassVar`. Every handwritten concrete method is parsed to validate explicit
+non-empty-or-`None` metadata; full payload/result compatibility is also checked when its endpoint
+appears. Handwritten files never override OpenAPI.
 
-Generated business operations must use POST, path `/<operationId>`, a required JSON body, one of
-the two canonical request envelopes, and a JSON `PokerlostResponse` for every numeric 2xx response.
-OpenAPI parameters and non-empty operation security declarations are rejected. Public
-infrastructure GET routes are skipped.
-
-Operation, method class/module, public schema name, and schema-module collisions are checked across
-all documents. The generator does not add a service prefix to resolve collisions.
-
-## Scope source
-
-The request schema tells the generator whether an operation is public or protected. It does not
-tell the generator the exact scope tuple. Protected scopes must come from either:
-
-- an existing hand-written flat method with literal `operation` and `required_scopes`; or
-- an explicit checked JSON scope map supplied with `--scope-map`.
-
-Descriptions and operation names are never parsed to guess scopes.
-
-## Rendering and ownership
-
-Every generated operation gets one `methods/<module>.py`; every generated public type gets one
-`types/<module>.py`. Facades are regenerated from generated and hand-written flat modules. The
-version-three manifest records all source contracts and the exact generator-owned file list.
-
-Stale files are removed only when prior manifest ownership and the generator header both prove
-ownership. Manual stubs are not overwritten or removed.
-
-## Runtime boundary
-
-The generator is tooling under `scripts/`. Generated code imports stable runtime facades only. It
-does not instantiate clients, middleware, sessions, token stores, or service verifiers.
-
-See `docs/generator/contract.md`, `docs/generator/generated-layout.md`, and `docs/index.md`.
+Generated ownership is recorded by the existing manifest only for files actually rendered from
+implemented operations. Non-generated stubs and the shared scope catalog are not silently
+overwritten or deleted, and `--check` compares the entire expected fixed point.

@@ -1,66 +1,73 @@
-"""Central asynchronous body-only Pokerlost client."""
+"""Central asynchronous Pokerlost client."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from types import TracebackType
 from typing import Self, cast
 
-from pydantic import ValidationError
-
+from pypokerlost.enums import PokerlostScopes
 from pypokerlost.errors import PokerlostConfigurationError
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.middleware import (
-    PokerlostAuthorizationMiddleware,
+    PokerlostAuthenticationMiddleware,
     PokerlostCallNext,
     PokerlostMiddleware,
-    PokerlostMiddlewareRequest,
     PokerlostRetryMiddleware,
 )
+from pypokerlost.middleware._call import PokerlostCall
 from pypokerlost.session import HttpxSession, PokerlostSession
+from pypokerlost.types import PokerlostRequest
 
-from .pokerlost_request_builder import PokerlostRequestBuilder
+from .pokerlost_api_server import PokerlostAPIServer
 from .pokerlost_request_options import PokerlostRequestOptions
+
+_MISSING = object()
 
 
 class PokerlostClient:
-    """Execute typed methods through retry, authorization, and JSON transport."""
+    """Execute typed methods through authentication, retry, and JSON transport."""
 
     def __init__(
         self,
         session: PokerlostSession | None = None,
         *,
+        server: PokerlostAPIServer | None = None,
         middleware: Sequence[PokerlostMiddleware] = (),
     ) -> None:
+        if session is not None and server is not None:
+            raise PokerlostConfigurationError("Pass either session or server, not both")
         supplied = tuple(middleware)
-        retry_count = sum(isinstance(item, PokerlostRetryMiddleware) for item in supplied)
-        authorization_count = sum(
-            isinstance(item, PokerlostAuthorizationMiddleware) for item in supplied
+        retry_layers = tuple(
+            item for item in supplied if isinstance(item, PokerlostRetryMiddleware)
         )
-        if retry_count > 1 or authorization_count > 1:
+        authentication_layers = tuple(
+            item for item in supplied if isinstance(item, PokerlostAuthenticationMiddleware)
+        )
+        if len(retry_layers) > 1 or len(authentication_layers) > 1:
             raise PokerlostConfigurationError(
-                "Pokerlost middleware can contain at most one retry and authorization layer"
+                "Pokerlost middleware can contain at most one retry and authentication layer"
             )
-        if retry_count == 0:
-            supplied = (PokerlostRetryMiddleware(), *supplied)
-        retry_index = next(
-            index
-            for index, item in enumerate(supplied)
-            if isinstance(item, PokerlostRetryMiddleware)
+        retry = retry_layers[0] if retry_layers else PokerlostRetryMiddleware()
+        authentication = authentication_layers[0] if authentication_layers else None
+        custom = tuple(
+            item
+            for item in supplied
+            if not isinstance(item, PokerlostRetryMiddleware | PokerlostAuthenticationMiddleware)
         )
-        authorization_indexes = tuple(
-            index
-            for index, item in enumerate(supplied)
-            if isinstance(item, PokerlostAuthorizationMiddleware)
+        # Retry owns the complete logical-call budget; authentication shares one refresh claim.
+        self._middleware = (
+            retry,
+            *((authentication,) if authentication is not None else ()),
+            *custom,
         )
-        if retry_index != 0 or (authorization_indexes and authorization_indexes[0] <= retry_index):
-            raise PokerlostConfigurationError(
-                "Middleware order must be retry outermost and authorization inside it"
-            )
-        self._session = session if session is not None else HttpxSession()
-        self._middleware = supplied
-        self._request_builder = PokerlostRequestBuilder()
+        if session is not None:
+            self._session = session
+        elif server is not None:
+            self._session = HttpxSession(api_server=server)
+        else:
+            self._session = HttpxSession()
         self._context_stack: AsyncExitStack | None = None
 
     @property
@@ -72,8 +79,8 @@ class PokerlostClient:
         return self._middleware
 
     @property
-    def has_authorization_middleware(self) -> bool:
-        return any(isinstance(item, PokerlostAuthorizationMiddleware) for item in self._middleware)
+    def has_authentication_middleware(self) -> bool:
+        return any(isinstance(item, PokerlostAuthenticationMiddleware) for item in self._middleware)
 
     async def start(self) -> Self:
         await self._session.start()
@@ -88,100 +95,81 @@ class PokerlostClient:
         *,
         options: PokerlostRequestOptions | None = None,
     ) -> ResultT:
-        try:
-            return await self.make_request(
-                method,
-                options=options,
+        if not isinstance(method, PokerlostMethod):
+            raise PokerlostConfigurationError("Pokerlost client requires a PokerlostMethod")
+        operation = getattr(method, "operation", None)
+        returning = getattr(method, "returning", None)
+        declared_scopes = type(method).__dict__.get("__scopes__", _MISSING)
+        safe_operation = str(operation) if operation is not None else None
+        if operation is None or returning is None or declared_scopes is _MISSING:
+            raise PokerlostConfigurationError(
+                "Concrete Pokerlost method must declare operation, returning, and __scopes__",
+                operation=safe_operation,
             )
-        finally:
-            self = cast("PokerlostClient", None)
-            method = cast("PokerlostMethod[ResultT]", None)
-            options = None
+        scopes = self._validate_scopes(declared_scopes, operation=str(operation))
+        if scopes is not None and not self.has_authentication_middleware:
+            raise PokerlostConfigurationError(
+                "Protected operation requires PokerlostAuthenticationMiddleware",
+                operation=str(operation),
+            )
+        call_options = options if options is not None else PokerlostRequestOptions()
+        request: PokerlostRequest[object] | None = None
+        with suppress(TypeError, ValueError):
+            request = PokerlostRequest[object](payload=method)
+        if request is None:
+            raise PokerlostConfigurationError(
+                "Pokerlost method payload could not be prepared",
+                operation=str(operation),
+            )
+        call = PokerlostCall(
+            method=cast("PokerlostMethod[object]", method),
+            request=request,
+            options=call_options,
+            scopes=scopes,
+        )
 
-    async def make_request[ResultT](
-        self,
-        method: PokerlostMethod[ResultT],
-        *,
-        options: PokerlostRequestOptions | None = None,
-    ) -> ResultT:
-        executing_method = cast("PokerlostMethod[ResultT]", None)
-        request = cast("PokerlostMiddlewareRequest", None)
-        call_next = cast("PokerlostCallNext[object]", None)
-        transport = cast("PokerlostCallNext[object]", None)
-        layer = cast("PokerlostMiddleware", None)
-        serialized_method = ""
-        try:
-            try:
-                if not isinstance(method, PokerlostMethod):
-                    raise TypeError("Pokerlost client requires a PokerlostMethod")
-                serialized_method = method.model_dump_json(
-                    by_alias=False,
-                    exclude_unset=True,
-                )
-                executing_method = (
-                    type(method)
-                    .model_validate_json(
-                        serialized_method,
-                        strict=True,
-                    )
-                    .as_(self)
-                )
-                call_options = options if options is not None else PokerlostRequestOptions()
-                request = cast(
-                    "PokerlostMiddlewareRequest",
-                    self._request_builder.build(executing_method, call_options),
-                )
-                if executing_method.required_scopes and not self.has_authorization_middleware:
-                    raise PokerlostConfigurationError(
-                        "Protected operation requires PokerlostAuthorizationMiddleware",
-                        operation=executing_method.operation,
-                    )
-            except TypeError, ValueError, ValidationError:
-                raise PokerlostConfigurationError(
-                    "Pokerlost method could not be prepared"
-                ) from None
+        async def transport(current_call: PokerlostCall) -> object:
+            return await self._session.send(current_call)
 
-            async def transport(
-                current_request: PokerlostMiddlewareRequest,
-                session: PokerlostSession = self._session,
-            ) -> object:
-                try:
-                    return await session.send(current_request)
-                finally:
-                    current_request = cast("PokerlostMiddlewareRequest", None)
-                    session = cast("PokerlostSession", None)
+        call_next: PokerlostCallNext[object] = transport
+        for layer in reversed(self._middleware):
+            call_next = self._wrap(layer, call_next)
+        return cast(ResultT, await call_next(call))
 
-            call_next = transport
-            for layer in reversed(self._middleware):
-                call_next = self._wrap(layer, call_next)
-            return cast(ResultT, await call_next(request))
-        finally:
-            self = cast("PokerlostClient", None)
-            method = cast("PokerlostMethod[ResultT]", None)
-            executing_method = cast("PokerlostMethod[ResultT]", None)
-            options = None
-            request = cast("PokerlostMiddlewareRequest", None)
-            call_next = cast("PokerlostCallNext[object]", None)
-            transport = cast("PokerlostCallNext[object]", None)
-            layer = cast("PokerlostMiddleware", None)
-            serialized_method = ""
+    @staticmethod
+    def _validate_scopes(value: object, *, operation: str) -> tuple[PokerlostScopes, ...] | None:
+        if value is None:
+            return None
+        if not isinstance(value, tuple) or not value:
+            raise PokerlostConfigurationError(
+                "Method __scopes__ must be None or a non-empty tuple",
+                operation=operation,
+            )
+        if any(not isinstance(scope, PokerlostScopes) for scope in value):
+            raise PokerlostConfigurationError(
+                "Method __scopes__ must contain only PokerlostScopes members",
+                operation=operation,
+            )
+        scopes = cast("tuple[PokerlostScopes, ...]", value)
+        if len(frozenset(scopes)) != len(scopes):
+            raise PokerlostConfigurationError(
+                "Method __scopes__ must not contain duplicates",
+                operation=operation,
+            )
+        if scopes != tuple(sorted(scopes, key=lambda item: item.value)):
+            raise PokerlostConfigurationError(
+                "Method __scopes__ must use canonical ordering",
+                operation=operation,
+            )
+        return scopes
 
+    @staticmethod
     def _wrap(
-        self,
         middleware: PokerlostMiddleware,
         call_next: PokerlostCallNext[object],
     ) -> PokerlostCallNext[object]:
-        async def wrapped(
-            request: PokerlostMiddlewareRequest,
-            current_middleware: PokerlostMiddleware = middleware,
-            current_call_next: PokerlostCallNext[object] = call_next,
-        ) -> object:
-            try:
-                return await current_middleware(request, current_call_next)
-            finally:
-                request = cast("PokerlostMiddlewareRequest", None)
-                current_middleware = cast("PokerlostMiddleware", None)
-                current_call_next = cast("PokerlostCallNext[object]", None)
+        async def wrapped(call: PokerlostCall) -> object:
+            return await middleware(call, call_next)
 
         return wrapped
 

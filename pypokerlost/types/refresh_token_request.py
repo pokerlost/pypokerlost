@@ -12,15 +12,16 @@ from pydantic import (
     StringConstraints,
 )
 
-from .pokerlost_scope import PokerlostScope, canonicalize_pokerlost_scopes
+from pypokerlost.enums import PokerlostScopes
+
+from ._scope_set import parse_scope_set
+from .pokerlost_audience import PokerlostAudience
 
 
-def _canonical_optional_scopes(value: object) -> tuple[PokerlostScope, ...] | None:
+def _canonical_optional_scopes(value: object) -> tuple[PokerlostScopes, ...] | None:
     if value is None:
         return None
-    if not isinstance(value, (list, tuple, frozenset)):
-        raise ValueError("Requested scopes must be null, a tuple, or a JSON array")
-    return canonicalize_pokerlost_scopes(value)
+    return parse_scope_set(value, field_name="Requested scopes")
 
 
 class RefreshTokenRequest(BaseModel):
@@ -39,7 +40,7 @@ class RefreshTokenRequest(BaseModel):
         StringConstraints(strict=True, min_length=1),
     ] = Field(repr=False)
     scopes: Annotated[
-        tuple[PokerlostScope, ...] | None,
+        tuple[PokerlostScopes, ...] | None,
         BeforeValidator(_canonical_optional_scopes),
     ] = None
-    audience: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    audience: PokerlostAudience

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict
 
-from .authorization_role import AuthorizationRole
+from pypokerlost.enums import PokerlostScopes
+
+from ._scope_set import parse_scope_set
+
+
+def _parse_initial_scopes(value: object) -> tuple[PokerlostScopes, ...]:
+    return parse_scope_set(value, field_name="Initial scopes", allow_empty=True)
 
 
 class ProvisionHumanRequest(BaseModel):
@@ -21,4 +28,7 @@ class ProvisionHumanRequest(BaseModel):
 
     business_operation_id: UUID
     account_id: UUID
-    role: AuthorizationRole
+    initial_scopes: Annotated[
+        tuple[PokerlostScopes, ...],
+        BeforeValidator(_parse_initial_scopes),
+    ]

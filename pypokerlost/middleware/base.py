@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from pypokerlost.types import PokerlostAuthorizedRequest, PokerlostRequest
+from ._call import PokerlostCall
 
-type PokerlostMiddlewareRequest = PokerlostRequest[object] | PokerlostAuthorizedRequest[object]
 type PokerlostCallNext[ResultT] = Callable[..., Awaitable[ResultT]]
 
 
@@ -16,7 +15,7 @@ class PokerlostMiddleware(Protocol):
 
     async def __call__[ResultT](
         self,
-        request: PokerlostMiddlewareRequest,
+        call: PokerlostCall,
         call_next: PokerlostCallNext[ResultT],
         /,
     ) -> ResultT:

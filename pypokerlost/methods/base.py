@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import ClassVar
 
 from pydantic import ConfigDict
 
+from pypokerlost.enums import PokerlostScopes
 from pypokerlost.types.base import PokerlostType
 from pypokerlost.types.pokerlost_operation import PokerlostOperation
-from pypokerlost.types.pokerlost_scope import PokerlostScope
-
-if TYPE_CHECKING:
-    from pypokerlost.client import PokerlostClient
 
 
 class PokerlostMethod[ResultT](PokerlostType):
@@ -28,15 +25,10 @@ class PokerlostMethod[ResultT](PokerlostType):
     )
 
     operation: ClassVar[PokerlostOperation]
-    required_scopes: ClassVar[tuple[PokerlostScope, ...]] = ()
+    __scopes__: ClassVar[tuple[PokerlostScopes, ...] | None]
     returning: ClassVar[object]
 
-    async def emit(self, client: PokerlostClient) -> ResultT:
-        try:
-            return await client(self)
-        finally:
-            self = cast("PokerlostMethod[ResultT]", None)
-            client = cast("PokerlostClient", None)
-
     def __await__(self) -> Generator[object, None, ResultT]:
-        return self.emit(self.resolve_client()).__await__()
+        from pypokerlost.client.current_client import get_current_client
+
+        return get_current_client()(self).__await__()

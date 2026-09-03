@@ -2,33 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import BeforeValidator, Field, StringConstraints
 
-from pypokerlost.types import (
-    PokerlostOperation,
-    PokerlostScope,
-    PokerlostToken,
-    canonicalize_pokerlost_scopes,
-)
+from pypokerlost.enums import PokerlostScopes
+from pypokerlost.types import PokerlostAudience, PokerlostOperation, PokerlostToken
+from pypokerlost.types._scope_set import parse_scope_set
 
 from .base import PokerlostMethod
 
 
-def _canonical_optional_scopes(value: object) -> tuple[PokerlostScope, ...] | None:
+def _canonical_optional_scopes(value: object) -> tuple[PokerlostScopes, ...] | None:
     if value is None:
         return None
-    if not isinstance(value, (list, tuple, frozenset)):
-        raise ValueError("Requested scopes must be null, a tuple, or a JSON array")
-    return canonicalize_pokerlost_scopes(value)
+    return parse_scope_set(value, field_name="Requested scopes")
 
 
 class RefreshToken(PokerlostMethod[PokerlostToken]):
-    """Refresh a token through a public body-only call."""
+    """Refresh a token through an explicit public call."""
 
     operation = PokerlostOperation("refreshToken")
-    required_scopes = ()
+    __scopes__: ClassVar[tuple[PokerlostScopes, ...] | None] = None
     returning = PokerlostToken
 
     refresh_token: Annotated[
@@ -36,7 +31,7 @@ class RefreshToken(PokerlostMethod[PokerlostToken]):
         StringConstraints(strict=True, min_length=1),
     ] = Field(repr=False)
     scopes: Annotated[
-        tuple[PokerlostScope, ...] | None,
+        tuple[PokerlostScopes, ...] | None,
         BeforeValidator(_canonical_optional_scopes),
     ] = None
-    audience: Annotated[str, StringConstraints(strict=True, min_length=1)]
+    audience: PokerlostAudience

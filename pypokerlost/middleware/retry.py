@@ -7,17 +7,22 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from random import random
 from time import monotonic
-from typing import cast
 
 from pypokerlost.errors import (
     PokerlostAPIError,
     PokerlostAuthenticationError,
     PokerlostAuthorizationError,
     PokerlostConnectionError,
+    PokerlostProtocolError,
     PokerlostTimeoutError,
 )
 
-from .base import PokerlostCallNext, PokerlostMiddlewareRequest
+from ._call import PokerlostCall, reactive_refresh_scope
+from .base import PokerlostCallNext
+
+type _RetryableError = (
+    PokerlostConnectionError | PokerlostTimeoutError | PokerlostProtocolError | PokerlostAPIError
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,63 +56,59 @@ class PokerlostRetryMiddleware:
 
     async def __call__[ResultT](
         self,
-        request: PokerlostMiddlewareRequest,
+        call: PokerlostCall,
         call_next: PokerlostCallNext[ResultT],
         /,
     ) -> ResultT:
-        last_error: PokerlostConnectionError | PokerlostTimeoutError | PokerlostAPIError | None = (
-            None
-        )
-        try:
-            policy = request.options.retry_policy
+        with reactive_refresh_scope():
+            policy = call.options.retry_policy
             if policy is None:
-                return await call_next(request)
+                return await call_next(call)
 
             started_at = self._clock()
+            last_error: _RetryableError | None = None
             for attempt_number in range(1, policy.max_attempts + 1):
                 remaining = policy.total_budget - (self._clock() - started_at)
                 if remaining <= 0.0:
                     if last_error is not None:
                         raise last_error from None
-                    raise PokerlostTimeoutError(operation=request.method.operation)
+                    raise PokerlostTimeoutError(operation=str(call.method.operation))
+                attempt_timed_out = False
                 try:
                     async with asyncio.timeout(remaining):
-                        return await call_next(request)
+                        return await call_next(call)
                 except asyncio.CancelledError:
                     raise
                 except TimeoutError:
-                    if last_error is not None:
-                        raise last_error from None
-                    raise PokerlostTimeoutError(operation=request.method.operation) from None
+                    attempt_timed_out = True
                 except (
                     PokerlostConnectionError,
                     PokerlostTimeoutError,
+                    PokerlostProtocolError,
                     PokerlostAPIError,
                 ) as error:
                     last_error = error
-                    if not self._is_retryable(error, policy):
-                        raise
-                    if attempt_number == policy.max_attempts:
+                    if (
+                        not self._is_retryable(error, policy)
+                        or attempt_number == policy.max_attempts
+                    ):
                         raise
                     delay = self._next_delay(error, policy, retry_number=attempt_number)
                     remaining = policy.total_budget - (self._clock() - started_at)
                     if remaining <= 0.0 or delay >= remaining:
                         raise
                     await self._sleep(delay)
+                if attempt_timed_out:
+                    if last_error is not None:
+                        raise last_error from None
+                    raise PokerlostTimeoutError(operation=str(call.method.operation))
 
             if last_error is not None:
                 raise last_error
-            raise PokerlostTimeoutError(operation=request.method.operation)
-        finally:
-            request = cast("PokerlostMiddlewareRequest", None)
-            call_next = cast("PokerlostCallNext[ResultT]", None)
-            last_error = None
+            raise PokerlostTimeoutError(operation=str(call.method.operation))
 
-    def _is_retryable(
-        self,
-        error: PokerlostConnectionError | PokerlostTimeoutError | PokerlostAPIError,
-        policy: PokerlostRetryPolicy,
-    ) -> bool:
+    @staticmethod
+    def _is_retryable(error: _RetryableError, policy: PokerlostRetryPolicy) -> bool:
         if isinstance(error, PokerlostAuthenticationError | PokerlostAuthorizationError):
             return False
         if isinstance(error, PokerlostConnectionError | PokerlostTimeoutError):
@@ -116,7 +117,7 @@ class PokerlostRetryMiddleware:
 
     def _next_delay(
         self,
-        error: PokerlostConnectionError | PokerlostTimeoutError | PokerlostAPIError,
+        error: _RetryableError,
         policy: PokerlostRetryPolicy,
         *,
         retry_number: int,

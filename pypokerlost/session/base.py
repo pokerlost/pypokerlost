@@ -6,24 +6,18 @@ import abc
 from types import TracebackType
 from typing import Self
 
-from pypokerlost.types import PokerlostAuthorizedRequest, PokerlostRequest
-
-type PokerlostRequestEnvelope = PokerlostRequest[object] | PokerlostAuthorizedRequest[object]
+from pypokerlost.middleware._call import PokerlostCall
 
 
 class PokerlostSession(abc.ABC):
-    """Send one canonical JSON envelope and return its declared typed result."""
+    """Send one internal call and return its declared typed result."""
 
     async def start(self) -> None:  # noqa: B027
         """Start transport resources when needed."""
 
     @abc.abstractmethod
-    async def send[ResultT](
-        self,
-        request: PokerlostRequestEnvelope,
-        /,
-    ) -> ResultT:
-        """Send one request without adding caller-controlled HTTP metadata."""
+    async def send[ResultT](self, call: PokerlostCall, /) -> ResultT:
+        """Send one call without accepting generic caller-controlled headers."""
 
     @abc.abstractmethod
     async def close(self) -> None:

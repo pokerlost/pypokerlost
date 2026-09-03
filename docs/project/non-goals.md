@@ -2,39 +2,16 @@
 
 `pypokerlost` is a typed protocol SDK, not a service business platform.
 
-## Service ownership
+It does not own service domains, databases, migrations, client credential loading, initial token
+acquisition, production token storage, encryption keys, cross-process lease implementation, JWT
+signing or verification, route policy, account workflows, or deployment configuration.
 
-The SDK does not own:
+It provides no generic HTTP metadata, form/query/cookie authentication, service discovery,
+endpoint facade, global retry, streaming transport, runtime OpenAPI generation, or business
+idempotency claim.
 
-- service domain workflows, databases, ORM models, repositories, or migrations;
-- account or authentication service implementations;
-- client credential loading or production secret storage;
-- access-token signing, verification, key publication, or rotation;
-- route-side audience/scope policy or role expansion;
-- production token-store persistence;
-- business operation ID creation, mutation safety, workflow persistence, outboxes, or
-  reconciliation.
+Authentication middleware is a narrow consumer of persistence/refresher ports. It may recover one
+canonical expiration, but services own safe pre-handler rejection and business transaction
+boundaries. Retry owns bounded transport attempts only.
 
-## Transport boundary
-
-The SDK does not provide:
-
-- caller-controlled generic HTTP metadata;
-- form, query, cookie, or alternate authentication transports;
-- automatic service discovery, service routing, or an endpoint-specific client facade;
-- globally enabled retry or replay of the failed operation after authentication failure;
-- proof that an operation is safe to replay;
-- streaming, WebSocket, event, or alternate transport protocols;
-- runtime OpenAPI generation.
-
-## Middleware boundary
-
-`PokerlostTokenStore` is a port, not a bundled backend. Consumers own persistence, encryption,
-credential sources, and deployment policy. Authorization middleware coordinates token calls but
-does not authorize service routes.
-
-Retry middleware owns bounded transport attempts only. Consumers retain the exact business
-operation ID, semantic payload, target contract, database transaction boundaries, and ambiguous
-outcome recovery.
-
-See `SERVICE.md`, `docs/project/status.md`, and `docs/index.md`.
+Authorization is based exclusively on exact scopes; no authorization role abstraction exists.
