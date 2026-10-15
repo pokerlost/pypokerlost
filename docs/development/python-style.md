@@ -8,6 +8,8 @@ Production validation uses Pydantic, `ValueError`, `TypeError`, or canonical SDK
 runtime assertions. Secret-bearing fields are repr-hidden and validation input is hidden. Code and
 errors never claim Python strings have been securely zeroed.
 
-Project classes use `Pokerlost`, modules/functions use snake_case, operation IDs use one
-lowerCamelCase segment, and dotted scope segments use lowerCamelCase. Enum definitions belong only
-under `pypokerlost/enums/`.
+New project-owned private modules, functions, and variables use lowerCamelCase when no existing
+contract fixes the name. Current public imports, generated modules, protocol methods, published
+signatures, and tool discovery paths retain their spelling until a separately checked migration.
+Project classes use `Pokerlost`; operation IDs use one lowerCamelCase segment, and dotted scope
+segments use lowerCamelCase. Enum definitions belong only under `pypokerlost/enums/`.

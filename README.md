@@ -46,4 +46,5 @@ tuple whose members belong to the SDK-owned `PokerlostScopes` catalog.
 `PokerlostAuthenticationMiddleware` loads an already persisted token and the transport adds the
 bearer header without changing the JSON body.
 
-See `docs/index.md`. Run `make check` for the regular gate and `make check-full` before release.
+See the [documentation index](docs/index.md). Run `make check` for the regular gate and
+`make check-full` before release.

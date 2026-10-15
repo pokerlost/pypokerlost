@@ -25,13 +25,15 @@ headings in logical order, and use tables only when a real comparison or matrix 
 prose. Public guide filenames use lowercase kebab-case.
 
 Every fenced block declares its language, such as `python`, `bash`, `toml`, `json`, or `text`.
+Use a small number of meaningful emoji in navigation headings when they improve scanning; never
+put them in API identifiers, filenames, commands, or every paragraph.
 Leaf pages end by referring to `docs/index.md`.
 
 ## Links and paths
 
-Do not use Markdown links between repository files. Refer to an internal file by its repository-root
-path in inline code, such as `docs/architecture/overview.md` or `SERVICE.md`. HTTP(S) links,
-`mailto:` links, and same-document `#anchor` links remain allowed. Documentation must not contain
+Use relative Markdown links for related repository files and verify their target and anchor. Keep
+repository-root paths in inline code when discussing ownership or command arguments. HTTP(S),
+`mailto:`, and same-document anchors remain allowed. Documentation must not contain
 workstation-specific absolute paths. The repository-local checker enforces these rules. When a page
 is replaced before stable public documentation URLs exist, remove the obsolete page after migrating
 its unique content rather than keeping a redirect stub.

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_DIRECTORIES = frozenset(
@@ -64,10 +64,25 @@ def _normalized_destination(raw_destination: str) -> str:
     return destination.split(maxsplit=1)[0]
 
 
-def _validate_destination(destination: str) -> str | None:
-    if destination.startswith("#"):
-        return None
+def _anchors(path: Path) -> set[str]:
+    prose = _prose_text(path.read_text(encoding="utf-8"))
+    counts: dict[str, int] = {}
+    anchors: set[str] = set()
+    for line in prose.splitlines():
+        match = re.match(r"^#{1,6}\s+(.+)$", line)
+        if match is None:
+            continue
+        heading = re.sub(r"[`*_]", "", match.group(1)).casefold()
+        base = re.sub(
+            r"\s+", "-", "".join(ch for ch in heading if ch.isalnum() or ch in " -_")
+        ).strip("-")
+        count = counts.get(base, 0)
+        counts[base] = count + 1
+        anchors.add(base if count == 0 else f"{base}-{count}")
+    return anchors
 
+
+def _validate_destination(destination: str, source: Path) -> str | None:
     try:
         parsed = urlsplit(destination)
     except ValueError:
@@ -78,7 +93,16 @@ def _validate_destination(destination: str) -> str | None:
         return None
     if parsed.scheme:
         return f"unsupported link scheme {parsed.scheme!r}"
-    return "relative inter-file Markdown links are forbidden"
+    if parsed.netloc or parsed.query or parsed.path.startswith("/"):
+        return "local link must be a relative path without a query"
+    target = (source.parent / unquote(parsed.path)).resolve() if parsed.path else source.resolve()
+    if not target.is_relative_to(REPOSITORY_ROOT) or not target.is_file():
+        return "local link target is missing or outside the repository"
+    if parsed.fragment and (
+        target.suffix != ".md" or unquote(parsed.fragment).casefold() not in _anchors(target)
+    ):
+        return "local link anchor does not exist"
+    return None
 
 
 def _validate_document(path: Path) -> list[str]:
@@ -90,7 +114,7 @@ def _validate_document(path: Path) -> list[str]:
     for pattern in (INLINE_LINK_PATTERN, REFERENCE_LINK_PATTERN):
         for match in pattern.finditer(prose):
             destination = _normalized_destination(match.group(1))
-            problem = _validate_destination(destination)
+            problem = _validate_destination(destination, path)
             if problem is not None:
                 line_number = prose.count("\n", 0, match.start()) + 1
                 errors.append(f"{relative_path}:{line_number}: {problem}: {destination!r}")
