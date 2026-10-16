@@ -22,7 +22,8 @@ place and reference its repository-root path from related pages.
 
 Every Markdown page has exactly one H1 followed by a short introductory paragraph. Use H2 and H3
 headings in logical order, and use tables only when a real comparison or matrix is clearer than
-prose. Public guide filenames use lowercase kebab-case.
+prose. Keep existing published guide paths stable. New project-owned multiword guide filenames use
+`lowerCamelCase` unless a tool requires a fixed name.
 
 Every fenced block declares its language, such as `python`, `bash`, `toml`, `json`, or `text`.
 Use a small number of meaningful emoji in navigation headings when they improve scanning; never
