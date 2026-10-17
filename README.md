@@ -48,3 +48,4 @@ bearer header without changing the JSON body.
 
 See the [documentation index](docs/index.md). Run `make check` for the regular gate and
 `make check-full` before release.
+The regular gate includes SDK HTTP and authorization-boundary regression tests.

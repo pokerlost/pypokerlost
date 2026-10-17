@@ -2,7 +2,7 @@
 
 UV ?= uv
 
-.PHONY: help lock lock-check sync format format-check lint typecheck compile build \
+.PHONY: help lock lock-check sync format format-check lint typecheck test compile build \
 	docs-check generator-check import-check pre-commit check check-full
 
 help: ## Show this help.
@@ -30,6 +30,9 @@ lint: ## Run Ruff lint without changing files.
 typecheck: ## Run strict mypy.
 	$(UV) run --locked mypy
 
+test: ## Run isolated SDK protocol regression tests.
+	$(UV) run --locked pytest -q
+
 compile: ## Compile runtime and tooling sources.
 	$(UV) run --locked python -m compileall -q pypokerlost scripts
 
@@ -50,6 +53,6 @@ import-check: ## Import the canonical public SDK foundation.
 pre-commit: ## Run every configured hook against all files.
 	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure
 
-check: lock-check format-check lint typecheck compile docs-check generator-check import-check ## Run the regular non-mutating gate.
+check: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
 
 check-full: check build pre-commit ## Run the complete repository gate.

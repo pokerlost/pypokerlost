@@ -84,7 +84,7 @@ This file defines the normative rules for changing the SDK. Product boundaries l
 
 ## Verification
 
-- Do not add, modify, or run tests unless the user explicitly requests them.
+- Add focused technical and regression tests for changed SDK protocol, generator, packaging, or lifecycle behavior. Do not add unimplemented business tests.
 - Do not add task-specific checker scripts. Make and pre-commit targets remain thin wrappers around
   canonical tools, documentation validation, or the generator's first-class check mode.
 - Use `uv`, Ruff, strict mypy, build checks, compile checks, and `git diff --check`.
