@@ -30,14 +30,14 @@ lint: ## Run Ruff lint without changing files.
 typecheck: ## Run strict mypy.
 	$(UV) run --locked mypy
 
-test: ## Run isolated SDK protocol regression tests.
-	$(UV) run --locked pytest -q
+test: ## Run runtime and generator tests with full statement/branch coverage.
+	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml
 
 compile: ## Compile runtime and tooling sources.
 	$(UV) run --locked python -m compileall -q pypokerlost scripts
 
 build: ## Build the wheel and source distribution.
-	$(UV) build
+	$(UV) build --no-build-isolation
 
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py

@@ -11,6 +11,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_DIRECTORIES = frozenset(
     {
         ".agents",
+        ".aws",
         ".codex",
         ".git",
         ".mypy_cache",
@@ -23,7 +24,7 @@ EXCLUDED_DIRECTORIES = frozenset(
 INLINE_LINK_PATTERN = re.compile(r"!?\[[^\]\n]*\]\(([^)\n]+)\)")
 REFERENCE_LINK_PATTERN = re.compile(r"^\s{0,3}\[[^\]\n]+\]:\s*(\S+)", flags=re.MULTILINE)
 LOCAL_PATH_PATTERN = re.compile(
-    r"(?:^|[\s`(])(?:/home/|/tmp/|~/|[A-Za-z]:[\\/])",
+    r"(?:^|[\s`(])(?P<path>/home/|/tmp/|~/|[A-Za-z]:[\\/])",
     flags=re.MULTILINE,
 )
 ALLOWED_LINK_SCHEMES = frozenset({"http", "https", "mailto"})
@@ -58,6 +59,8 @@ def _prose_text(text: str) -> str:
 
 def _normalized_destination(raw_destination: str) -> str:
     destination = raw_destination.strip()
+    if not destination:
+        return ""
     if destination.startswith("<"):
         closing = destination.find(">")
         return destination[1:closing] if closing >= 0 else destination
@@ -83,6 +86,8 @@ def _anchors(path: Path) -> set[str]:
 
 
 def _validate_destination(destination: str, source: Path) -> str | None:
+    if not destination:
+        return "link destination must not be empty"
     try:
         parsed = urlsplit(destination)
     except ValueError:
@@ -121,7 +126,7 @@ def _validate_document(path: Path) -> list[str]:
 
     local_path = LOCAL_PATH_PATTERN.search(text)
     if local_path is not None:
-        line_number = text.count("\n", 0, local_path.start()) + 1
+        line_number = text.count("\n", 0, local_path.start("path")) + 1
         errors.append(
             f"{relative_path}:{line_number}: contains a workstation-specific absolute path"
         )

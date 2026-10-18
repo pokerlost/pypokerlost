@@ -4,7 +4,7 @@ Current versions:
 
 ```text
 SDK package: 0.2.0
-Generator:   3.0.0
+Generator:   3.0.1
 Manifest:    4
 ```
 

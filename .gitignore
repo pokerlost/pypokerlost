@@ -127,9 +127,13 @@ target/
 
 ### AI agents
 
+.aws
 .agents/
 .codex/
 .claude/
+.serena/
+.local/
+backups/
 
 
 ### OS / temporary files

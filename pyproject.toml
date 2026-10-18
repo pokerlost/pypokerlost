@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
@@ -15,12 +15,20 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "hatchling>=1.27,<2",
     "mypy>=2.3,<3",
     "pre-commit>=4.6.2,<5",
     "ruff>=0.16.4,<1",
     "typer>=0.16.0,<1",
     "pytest>=9,<10",
     "pytest-cov>=7,<8",
+]
+
+[tool.hatch.build]
+exclude = [
+    ".aws", ".aws/**", ".agents", ".agents/**", ".codex", ".codex/**",
+    ".serena", ".serena/**", ".local", ".local/**", "backups", "backups/**",
+    ".env", ".env.*", "!.env.example",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -36,6 +44,25 @@ select = ["B", "E", "F", "I", "N", "RUF", "SIM", "UP"]
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config"
 markers = ["unit: isolated unit tests", "contract: public SDK contract tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["pypokerlost", "scripts"]
+patch = ["subprocess"]
+
+[tool.coverage.paths]
+runtime = ["pypokerlost", "*/site-packages/pypokerlost"]
+
+[tool.coverage.report]
+fail_under = 100
+precision = 2
+show_missing = true
+
+[tool.coverage.json]
+output = "coverage/coverage.json"
+
+[tool.coverage.xml]
+output = "coverage/coverage.xml"
 
 [tool.mypy]
 python_version = "3.14"
