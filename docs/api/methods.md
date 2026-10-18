@@ -24,7 +24,6 @@ Every member comes from the explicit SDK-owned `PokerlostScopes` catalog; OpenAP
 validates protected route metadata against that catalog.
 
 Current auth contracts are `GetToken`, `RefreshToken`, `GetJwks`, `ProvisionHuman`,
-`SetPrincipalStatus`, `ReplacePrincipalScopes`, and `IssueLoginGrant`. Only `getToken` is currently
-implemented by authService; the others are honest typed network stubs and never return synthetic
-results. `ProvisionHuman` accepts explicit `initial_scopes`; `ReplacePrincipalScopes` replaces an
+`SetPrincipalStatus`, `ReplacePrincipalScopes`, and `IssueLoginGrant`. The current service foundations implement none of these business operations. They remain typed
+network stubs and never return synthetic results. `ProvisionHuman` accepts explicit `initial_scopes`; `ReplacePrincipalScopes` replaces an
 exact scope set. No authorization-role operation exists.

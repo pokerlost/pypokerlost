@@ -49,3 +49,6 @@ bearer header without changing the JSON body.
 See the [documentation index](docs/index.md). Run `make check` for the regular gate and
 `make check-full` before release.
 The regular gate includes SDK HTTP and authorization-boundary regression tests.
+The currently exported backend foundations implement infrastructure routes only. Token and other
+business methods shown here are typed future contracts; they do not establish working server
+endpoints. Read [project status](docs/project/status.md) before trying them against a foundation.

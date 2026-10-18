@@ -81,3 +81,21 @@
 **/*.swp
 **/*.swo
 **/*~
+
+# Local credentials and launcher metadata are never build inputs (file or directory).
+.aws
+.aws/**
+.ssh
+.ssh/**
+.gnupg
+.gnupg/**
+.local-secrets
+.local-secrets/**
+.serena
+.serena/**
+.local
+.local/**
+backups
+backups/**
+*.pem
+*.key

@@ -14,8 +14,9 @@ make test
 make docs-check
 make pre-commit
 make check
-uv build
-python -m compileall -q pypokerlost scripts
+make build
+make test-image
+uv run --locked python -m compileall -q pypokerlost scripts
 git diff --check
 ```
 

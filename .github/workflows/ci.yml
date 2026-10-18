@@ -51,7 +51,19 @@ jobs:
           cache-dependency-glob: uv.lock
       - run: uv python install 3.14
       - run: make sync
-      - run: make build
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        with:
+          version: v0.36.1
+      - name: Canonical library artifacts
+        id: artifacts
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: artifacts
+          platforms: linux/amd64
+          outputs: type=local,dest=dist
+          cache-from: type=gha,scope=${{ github.repository_id }}-sdk-artifacts-linux-amd64-v1
+          cache-to: type=gha,mode=max,scope=${{ github.repository_id }}-sdk-artifacts-linux-amd64-v1
       - name: Installed wheel tests outside the source checkout
         run: |
           set -euo pipefail
@@ -64,6 +76,23 @@ jobs:
           cd "$RUNNER_TEMP/checks"
           "$RUNNER_TEMP/wheel/bin/python" -c 'from pathlib import Path; import pypokerlost; assert "site-packages" in Path(pypokerlost.__file__).parts'
           "$RUNNER_TEMP/wheel/bin/python" -m pytest --import-mode=importlib --cov --cov-report=term-missing --cov-report=json --cov-report=xml
+      - name: Cached installed-wheel test environment
+        id: testImage
+        if: ${{ always() && !cancelled() && steps.artifacts.outcome == 'success' }}
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: test
+          platforms: linux/amd64
+          load: true
+          tags: pypokerlost:test
+          cache-from: type=gha,scope=${{ github.repository_id }}-sdk-test-linux-amd64-v1
+          cache-to: type=gha,mode=max,scope=${{ github.repository_id }}-sdk-test-linux-amd64-v1
+      - name: Fresh installed-wheel container tests
+        if: ${{ always() && !cancelled() && steps.testImage.outcome == 'success' }}
+        run: |
+          mkdir -p coverage/container
+          docker run --rm --read-only --network none --tmpfs /tmp:rw,noexec,nosuid,size=128m --user "$(id -u):$(id -g)" --mount type=bind,source="$PWD/coverage/container",target=/checks/coverage pypokerlost:test
       - name: Built archives and installed-wheel coverage
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -73,6 +102,7 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
             ${{ runner.temp }}/checks/coverage/
+            coverage/container/
           if-no-files-found: error
           retention-days: 14
 

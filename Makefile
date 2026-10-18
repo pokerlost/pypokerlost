@@ -3,7 +3,7 @@
 UV ?= uv
 
 .PHONY: help lock lock-check sync format format-check lint typecheck test compile build \
-	docs-check generator-check import-check pre-commit check check-full
+	docs-check generator-check import-check pre-commit check check-full test-image
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -36,8 +36,13 @@ test: ## Run runtime and generator tests with full statement/branch coverage.
 compile: ## Compile runtime and tooling sources.
 	$(UV) run --locked python -m compileall -q pypokerlost scripts
 
-build: ## Build the wheel and source distribution.
-	$(UV) build --no-build-isolation
+build: ## Export the canonical wheel and source distribution from Docker.
+	docker buildx build --target artifacts --output type=local,dest=dist .
+
+test-image: ## Run fresh installed-wheel checks without network or a source checkout.
+	@mkdir -p coverage/container
+	docker buildx build --target test --load --tag pypokerlost:test .
+	docker run --rm --read-only --network none --tmpfs /tmp:rw,noexec,nosuid,size=128m --user "$$(id -u):$$(id -g)" --mount type=bind,source="$$(pwd)/coverage/container",target=/checks/coverage pypokerlost:test
 
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py
