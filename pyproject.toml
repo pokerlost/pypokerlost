@@ -29,6 +29,7 @@ exclude = [
     ".aws", ".aws/**", ".agents", ".agents/**", ".codex", ".codex/**",
     ".serena", ".serena/**", ".local", ".local/**", "backups", "backups/**",
     ".env", ".env.*", "!.env.example",
+    "/core.[0-9]*", "/.coverage", "/.coverage.*",
 ]
 
 [tool.hatch.build.targets.wheel]

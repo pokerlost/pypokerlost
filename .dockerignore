@@ -99,3 +99,5 @@ backups
 backups/**
 *.pem
 *.key
+
+/core.[0-9]*

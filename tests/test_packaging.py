@@ -15,6 +15,8 @@ import pytest
 REPOSITORY = Path(__file__).resolve().parents[1]
 PRIVATE_PARTS = {".aws", ".agents", ".codex", ".serena", ".local", "backups", ".env.private"}
 
+ARCHIVE_ARTIFACTS = {".coverage", ".coverage.parallel", "core.1234"}
+
 
 @pytest.mark.parametrize("aws_kind", ["file", "directory"])
 def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_kind: str) -> None:
@@ -35,6 +37,13 @@ def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_
         (root / ".aws").write_text("synthetic-not-credentials\n")
     (root / ".env.private").write_text("SYNTHETIC=private-marker\n")
     (root / ".env.example").write_text("SYNTHETIC=example\n")
+    for name in ARCHIVE_ARTIFACTS:
+        marker = root / name
+        marker.write_text("synthetic local build artifact\n")
+        marker.chmod(0)
+    (root / ".coveragerc").write_text("[run]\nbranch = true\n")
+    (package / "core").mkdir()
+    (package / "core/retained.py").write_text("VALUE = 1\n")
     environment = os.environ.copy()
     # This fixture's package differs from the canonical SDK; measure archive
     # membership instead of attributing its source to SDK runtime coverage.
@@ -54,7 +63,9 @@ def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_
     with zipfile.ZipFile(next((root / "dist").glob("*.whl"))) as archive:
         wheel = archive.namelist()
     for name in (*sdist, *wheel):
-        assert not PRIVATE_PARTS.intersection(Path(name).parts), name
+        assert not (PRIVATE_PARTS | ARCHIVE_ARTIFACTS).intersection(Path(name).parts), name
     assert any(name.endswith("/pypokerlost/__init__.py") for name in sdist)
     assert "pypokerlost/__init__.py" in wheel
+    assert "pypokerlost/core/retained.py" in wheel
+    assert any(name.endswith("/.coveragerc") for name in sdist)
     assert any(name.endswith("/.env.example") for name in sdist)

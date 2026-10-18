@@ -143,3 +143,5 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+/core.[0-9]*
