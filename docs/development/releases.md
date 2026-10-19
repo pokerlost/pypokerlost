@@ -3,8 +3,8 @@
 Current versions:
 
 ```text
-SDK package: 0.2.0
-Generator:   3.0.0
+SDK package: read pyproject.toml (unreleased candidate)
+Generator:   3.0.1
 Manifest:    4
 ```
 
@@ -15,3 +15,10 @@ standard OpenAPI scope extraction and explicit tri-state method metadata. The sh
 
 Service OpenAPI SemVer and canonical source hashes are recorded in the manifest. Publishing and
 deployment automation remain outside this repository.
+
+The current patch candidate fixes generator schema collection/nullable unions and controlled
+inspection errors, without changing the runtime wire protocol. Source and installed-wheel suites
+must both pass, including valid fresh coverage reports with advisory percentages, before a release decision. CI retains private
+candidate artifacts; it does not publish them. Existing service pins remain on their reviewed
+main-branch SDK revision until a separately reviewed dependency update. A tag, merge or release is
+not implied by candidate metadata.

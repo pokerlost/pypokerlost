@@ -127,9 +127,13 @@ target/
 
 ### AI agents
 
+.aws
 .agents/
 .codex/
 .claude/
+.serena/
+.local/
+backups/
 
 
 ### OS / temporary files
@@ -139,3 +143,5 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+/core.[0-9]*

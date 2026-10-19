@@ -11,7 +11,7 @@ You need:
 - `uv` available on `PATH`;
 - a local checkout of this repository.
 
-The runtime package depends only on Pydantic and HTTPX. Typer, aiofiles, Ruff, mypy, and pre-commit
+The runtime package depends only on Pydantic and HTTPX. Typer, Ruff, mypy, and pre-commit
 are development dependencies managed by the locked environment.
 
 ## Synchronize the source environment
@@ -35,14 +35,14 @@ uv run python -c "import pypokerlost; print(pypokerlost.__version__)"
 Build the current package, create an isolated Python 3.14 environment, and install the local wheel:
 
 ```bash
-uv build
+uv build --no-build-isolation
 uv venv --python 3.14 build/wheel-check
 uv pip install --python build/wheel-check/bin/python \
-  dist/pypokerlost-0.2.0-py3-none-any.whl
+  dist/pypokerlost-0.2.1.dev0-py3-none-any.whl
 build/wheel-check/bin/python -c "import pypokerlost; print(pypokerlost.__version__)"
 ```
 
-`uv build` creates both a wheel and a source distribution under `dist/`. See
+`uv build --no-build-isolation` creates both a wheel and a source distribution under `dist/`. See
 `docs/development/building.md` for artifact inspection and the Docker artifact workflow.
 
 See `docs/index.md`.

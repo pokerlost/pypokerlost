@@ -9,7 +9,7 @@ Validate the lockfile and build both distributions from the repository root:
 
 ```bash
 uv lock --check
-uv build
+uv build --no-build-isolation
 ```
 
 The default output directory is `dist/` and contains files matching:
@@ -38,16 +38,16 @@ Create a dedicated Python 3.14 environment and install the current wheel into it
 ```bash
 uv venv --python 3.14 build/wheel-check
 uv pip install --python build/wheel-check/bin/python \
-  dist/pypokerlost-0.2.0-py3-none-any.whl
+  dist/pypokerlost-0.2.1.dev0-py3-none-any.whl
 build/wheel-check/bin/python -c "import pypokerlost; print(pypokerlost.__version__)"
 ```
 
-The printed version should be `0.2.0` for the current package metadata.
+The printed version must match the candidate metadata in `pyproject.toml`.
 
 ## Docker artifact build
 
-The repository `Dockerfile` uses its pinned Python 3.14 `uv` image to validate the lockfile and
-build both distributions. Its final `artifacts` stage starts from `scratch` and contains no runtime
+The repository `Dockerfile` uses separately digest-pinned Python 3.14 and `uv` images to validate the lockfile and
+build both distributions with its locked backend and no build isolation. Its final `artifacts` stage starts from `scratch` and contains no runtime
 process.
 
 Export that stage to `dist/` with Docker BuildKit:
@@ -62,3 +62,10 @@ docker buildx build \
 See `docs/development/commands.md` for the complete static verification sequence.
 
 See `docs/index.md`.
+
+`make build` exports this same artifact target. `make test-image` builds its installed-wheel test
+environment and runs a fresh suite from `/checks` with no package source directory, network or
+writable root filesystem. Test tooling stays in that test image; the scratch artifact target has
+no application process or Kubernetes deployment. Private cache scope belongs to this repository,
+platform and target; restoring it never skips tests. `uv build --no-build-isolation` remains a
+host diagnostic build, separate from the canonical container artifact identity.

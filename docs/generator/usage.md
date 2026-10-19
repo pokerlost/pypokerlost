@@ -1,6 +1,6 @@
 # Generator command-line usage
 
-The generator version is `3.0.0`.
+The generator version is `3.0.1`.
 
 ```bash
 uv run --locked python scripts/generate_methods.py file \

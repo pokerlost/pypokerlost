@@ -25,14 +25,14 @@ from typing import Annotated, Never
 
 import httpx
 import typer
-from pydantic import StringConstraints, TypeAdapter
+from pydantic import PydanticSchemaGenerationError, StringConstraints, TypeAdapter
 
 from pypokerlost import enums as pokerlost_enums
 from pypokerlost import types as pokerlost_types
 from pypokerlost.client import PokerlostAPIServer
 from pypokerlost.types import PokerlostOperation
 
-GENERATOR_VERSION = "3.0.0"
+GENERATOR_VERSION = "3.0.1"
 DEFAULT_OUTPUT = Path("pypokerlost")
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_ROOT = REPOSITORY_ROOT / "scripts" / ".generated_methods"
@@ -287,7 +287,7 @@ def _sdk_canonical_schema_contract(name: str) -> str:
         generated: object = TypeAdapter(schema_type).json_schema(
             ref_template="#/components/schemas/{model}"
         )
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, PydanticSchemaGenerationError) as error:
         raise GenerationError(f"SDK canonical schema {name} cannot be inspected") from error
     root = _mapping(generated, location=f"SDK canonical schema {name}")
     definitions = _optional_mapping(root, "$defs", location=f"SDK canonical schema {name}")
@@ -654,6 +654,10 @@ def _strip_null(schema: dict[str, object]) -> dict[str, object]:
                 result = dict(schema)
                 result["type"] = remaining[0]
                 return result
+            if remaining:
+                result = dict(schema)
+                result["type"] = remaining
+                return result
         return schema
     remaining_branches: list[object] = []
     for branch in _sequence(branches_value, location="response.result union"):
@@ -935,6 +939,15 @@ def _collect_refs(
     if items is not None:
         _collect_refs(
             _schema(items, location="schema.items"),
+            source,
+            collected=collected,
+            canonical_schemas=canonical_schemas,
+            seen=seen,
+        )
+    additional = schema.get("additionalProperties")
+    if isinstance(additional, dict):
+        _collect_refs(
+            additional,
             source,
             collected=collected,
             canonical_schemas=canonical_schemas,
