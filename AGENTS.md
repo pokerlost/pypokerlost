@@ -11,7 +11,7 @@ This file defines the normative rules for changing the SDK. Product boundaries l
 
 ## Architecture
 
-- Runtime code lives directly under `pypokerlost/`.
+- Runtime code lives only under `src/pypokerlost/`; public imports remain `pypokerlost`.
 - Keep flat focused `client/`, `enums/`, `errors/`, `methods/`, `middleware/`, `session/`, and
   `types/` packages. Never create service-named subpackages or `contracts/`.
 - Every public enum class lives under the flat `pypokerlost/enums/` package.
@@ -21,6 +21,8 @@ This file defines the normative rules for changing the SDK. Product boundaries l
 
 - Business calls use `POST /<operation>` with one pure `PokerlostRequest` JSON body.
 - Protected calls carry their token only as `Authorization: Bearer <access-token>`.
+- Explicit gateway targets also carry `x-pokerlost-serviceId`; this is routing, not a credential.
+- Service identifiers are exact `ServiceId` members, independent of authorization audiences/scopes.
 - Only the HTTP transport converts the internal typed token field into that header.
 - No caller-facing or internal generic headers map is allowed.
 - Every normal response, including authentication failure, uses `PokerlostResponse`.

@@ -19,7 +19,7 @@ the supported standard OAuth2 client-credentials scheme. Each protected operatio
 requirement referring only to that scheme and at least one scope. Empty lists, unknown or ambiguous
 schemes, unknown scopes, duplicates, and OR alternatives fail.
 
-`pypokerlost/enums/pokerlost_scopes.py` is an explicit SDK-owned catalog, not generated output.
+`src/pypokerlost/enums/pokerlost_scopes.py` is an explicit SDK-owned catalog, not generated output.
 Every extracted scope must already have an exact member. Generated methods import those members and
 annotate metadata as a `ClassVar`. Every handwritten concrete method is parsed to validate explicit
 non-empty-or-`None` metadata; full payload/result compatibility is also checked when its endpoint

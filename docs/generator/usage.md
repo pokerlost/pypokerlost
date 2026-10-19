@@ -1,12 +1,12 @@
 # Generator command-line usage
 
-The generator version is `3.0.1`.
+The generator version is `3.1.0`.
 
 ```bash
 uv run --locked python scripts/generate_methods.py file \
   build/auth-openapi.json \
   build/accounts-openapi.json \
-  --output pypokerlost
+  --output src/pypokerlost
 ```
 
 Every service document belongs in the same invocation so global operation/schema names are checked

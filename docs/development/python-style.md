@@ -13,4 +13,4 @@ use `CapWords`, and constants use `UPPER_SNAKE_CASE`. Current public imports, ge
 protocol methods, published signatures, and tool discovery paths retain their spelling.
 The existing 100-character Ruff line length is explicit for this SDK and its generator.
 Project classes use `Pokerlost`; operation IDs use one lowerCamelCase segment, and dotted scope
-segments use lowerCamelCase. Enum definitions belong only under `pypokerlost/enums/`.
+segments use lowerCamelCase. Enum definitions belong only under `src/pypokerlost/enums/`.

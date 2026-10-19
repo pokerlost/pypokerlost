@@ -58,3 +58,9 @@ and `make verify`. The source suite and installed-wheel suite run once in separa
 installed reports are under `coverage/container/`. Coverage percentages are advisory; tests,
 types, builds and invalid/missing/stale reports fail. `make image` is explicitly notApplicable
 for this SDK library. No release or registry publication is performed by these commands.
+
+## License
+
+Original SDK code: [MIT](LICENSE). HTTPX and Pydantic are separately installed dependencies;
+their licenses remain their own. The generator extra uses Typer; no dependency source or fonts
+are bundled in this wheel. See the pinned `uv.lock` for exact dependency versions.

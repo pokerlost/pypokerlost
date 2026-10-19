@@ -44,7 +44,7 @@ test: ## Run runtime and generator tests with full statement/branch coverage.
 	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml
 
 compile: ## Compile runtime and tooling sources.
-	$(UV) run --locked python -m compileall -q pypokerlost scripts
+	$(UV) run --locked python -m compileall -q src/pypokerlost scripts
 
 build: ## Export the canonical wheel and source distribution from Docker.
 	docker buildx build --target artifacts --output type=local,dest=dist .

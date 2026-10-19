@@ -564,11 +564,16 @@ wheels = [
 
 [[package]]
 name = "pypokerlost"
-version = "0.2.1.dev0"
+version = "0.3.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+generator = [
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -586,7 +591,9 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "typer", marker = "extra == 'generator'", specifier = ">=0.16.0,<1" },
 ]
+provides-extras = ["generator"]
 
 [package.metadata.requires-dev]
 dev = [
