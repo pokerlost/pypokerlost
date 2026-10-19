@@ -33,6 +33,8 @@ This index covers the bearer-header Pokerlost SDK and its standard OpenAPI gener
 
 ## Development and project
 
+- [Local SDK contracts](development/agent-contracts.md)
+
 - `docs/development/commands.md`
 - `docs/development/python-style.md`
 - `docs/development/building.md`
