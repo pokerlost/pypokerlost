@@ -29,7 +29,7 @@ exclude = [
     ".aws", ".aws/**", ".agents", ".agents/**", ".codex", ".codex/**",
     ".serena", ".serena/**", ".local", ".local/**", "backups", "backups/**",
     ".env", ".env.*", "!.env.example",
-    "/core.[0-9]*", "/.coverage", "/.coverage.*",
+    "/core.[0-9]*", "/.coverage", "/.coverage.*", ".vscode", ".vscode/**",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -40,8 +40,10 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "N", "RUF", "SIM", "UP"]
+select = ["B", "E", "F", "I", "N", "RUF", "SIM", "UP", "TID252"]
 
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config"
 markers = ["unit: isolated unit tests", "contract: public SDK contract tests"]
