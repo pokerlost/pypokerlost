@@ -22,10 +22,13 @@ ARCHIVE_ARTIFACTS = {".coverage", ".coverage.parallel", "core.1234"}
 def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_kind: str) -> None:
     root = tmp_path / "package"
     root.mkdir()
-    for name in ("pyproject.toml", "README.md", ".gitignore"):
+    for name in ("pyproject.toml", "README.md", ".gitignore", "LICENSE"):
         shutil.copy2(REPOSITORY / name, root / name)
-    package = root / "pypokerlost"
-    package.mkdir()
+    (root / "scripts").mkdir()
+    for name in ("generate_methods.py", "__init__.py"):
+        shutil.copy2(REPOSITORY / "scripts" / name, root / "scripts" / name)
+    package = root / "src/pypokerlost"
+    package.mkdir(parents=True)
     (package / "__init__.py").write_text('"""Synthetic packaging-policy fixture."""\n')
     for name in PRIVATE_PARTS - {".env.private", ".aws"}:
         (root / name).mkdir()

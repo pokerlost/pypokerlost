@@ -103,7 +103,7 @@ def test_canonical_manifest_location_is_not_guessed_from_cwd(
     monkeypatch.setattr(generator, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(generator, "MANIFEST_ROOT", tmp_path / "scripts/.generated_methods")
     assert (
-        generator._manifest_path(tmp_path / "pypokerlost")
+        generator._manifest_path(tmp_path / "src/pypokerlost")
         == tmp_path / "scripts/.generated_methods/flat.json"
     )
     assert (

@@ -16,7 +16,7 @@ make pre-commit
 make check
 make build
 make test-image
-uv run --locked python -m compileall -q pypokerlost scripts
+uv run --locked python -m compileall -q src/pypokerlost scripts
 git diff --check
 ```
 
@@ -30,7 +30,7 @@ Final multi-service generation uses:
 uv run --locked python scripts/generate_methods.py file \
   build/auth-openapi.json \
   build/accounts-openapi.json \
-  --output pypokerlost \
+  --output src/pypokerlost \
   --check
 ```
 

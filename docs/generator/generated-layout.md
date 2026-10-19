@@ -3,7 +3,7 @@
 The explicit scope catalog lives beside one global flat generated method/type surface:
 
 ```text
-pypokerlost/
+src/pypokerlost/
 ├── enums/
 │   └── pokerlost_scopes.py  # explicit SDK-owned catalog
 ├── methods/

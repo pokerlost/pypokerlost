@@ -19,7 +19,7 @@ All documents are checked for global operation, class, module, and schema collis
 flat. Canonical SDK types are reused; other reachable schemas are rendered within the supported
 JSON Schema subset. Secrets are repr-hidden.
 
-`pypokerlost/enums/pokerlost_scopes.py` is the explicit shared SDK contract. The generator validates
+`src/pypokerlost/enums/pokerlost_scopes.py` is the explicit shared SDK contract. The generator validates
 every extracted protected scope against this catalog and never derives, rewrites, or claims
 manifest ownership of it. It does not infer planned scopes or operations from incomplete service
 documents.

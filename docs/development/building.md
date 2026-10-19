@@ -38,7 +38,7 @@ Create a dedicated Python 3.14 environment and install the current wheel into it
 ```bash
 uv venv --python 3.14 build/wheel-check
 uv pip install --python build/wheel-check/bin/python \
-  dist/pypokerlost-0.2.1.dev0-py3-none-any.whl
+  dist/pypokerlost-0.3.0.dev0-py3-none-any.whl
 build/wheel-check/bin/python -c "import pypokerlost; print(pypokerlost.__version__)"
 ```
 
@@ -69,3 +69,11 @@ writable root filesystem. Test tooling stays in that test image; the scratch art
 no application process or Kubernetes deployment. Private cache scope belongs to this repository,
 platform and target; restoring it never skips tests. `uv build --no-build-isolation` remains a
 host diagnostic build, separate from the canonical container artifact identity.
+
+## Installed generator
+
+Install the wheel with the `generator` extra to use `pypokerlost-generate --version` and
+`pypokerlost-generate file <openapi.json> --output src/pypokerlost`. The canonical source remains
+`scripts/generate_methods.py`; Hatch maps that file into the optional command package at build time.
+The SDK runtime still needs only HTTPX and Pydantic. Test wheel imports from a different directory
+without editable installation, a source checkout, `.git`, or `PYTHONPATH`.

@@ -17,7 +17,9 @@
 
 - Every business operation is `POST /<operation>` with one JSON request and response.
 - The JSON request is always `{"payload": ...}`; authentication never appears in it.
-- Protected calls add only `Authorization: Bearer <access-token>` at the transport adapter.
+- Protected calls add `Authorization: Bearer <access-token>` at the transport adapter.
+- Gateway targets explicitly select a `ServiceId` through `x-pokerlost-serviceId`, independently
+  of credentials, scopes, audience and JSON payload. Direct-origin targets keep the old default.
 - The response body always has `ok`, `result`, `error`, `error_message`, and `retry_after`.
 - No generic headers API, cookie authentication, query token, alternate envelope, or response
   metadata side channel exists.

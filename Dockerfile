@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=sdk-build,target=/root/.cache/uv,sharing=locked \
 FROM build AS test
 RUN uv pip install --python /workspace/.venv/bin/python --no-deps /artifacts/*.whl
 WORKDIR /checks
-COPY --exclude=pypokerlost --exclude=pypokerlost/** --chmod=u=rwX,go=rX . ./
+COPY --exclude=src --exclude=src/** --chmod=u=rwX,go=rX . ./
 ENV PATH="/workspace/.venv/bin:$PATH" COVERAGE_FILE=/checks/coverage/.coverage
 USER 65532:65532
 CMD ["python", "-m", "pytest", "--import-mode=importlib", "--cov", "--cov-report=term-missing", "--cov-report=json", "--cov-report=xml", "-p", "no:cacheprovider"]

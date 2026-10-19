@@ -38,7 +38,7 @@ Build the current package, create an isolated Python 3.14 environment, and insta
 uv build --no-build-isolation
 uv venv --python 3.14 build/wheel-check
 uv pip install --python build/wheel-check/bin/python \
-  dist/pypokerlost-0.2.1.dev0-py3-none-any.whl
+  dist/pypokerlost-0.3.0.dev0-py3-none-any.whl
 build/wheel-check/bin/python -c "import pypokerlost; print(pypokerlost.__version__)"
 ```
 

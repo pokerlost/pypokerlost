@@ -12,6 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from pypokerlost.client.pokerlost_api_server import (
     DEFAULT_POKERLOST_API_SERVER,
+    SERVICE_ID_HEADER,
     PokerlostAPIServer,
 )
 from pypokerlost.errors import (
@@ -108,22 +109,18 @@ class HttpxSession(PokerlostSession):
         transport_error: (
             PokerlostTimeoutError | PokerlostConnectionError | PokerlostConfigurationError | None
         ) = None
+        headers: dict[str, str] = {}
+        if self._api_server.service_id is not None:
+            headers[SERVICE_ID_HEADER] = self._api_server.service_id.value
+        if call.access_token is not None:
+            headers["Authorization"] = f"Bearer {call.access_token.get_secret_value()}"
         try:
-            if call.access_token is None:
-                response = await http_client.post(
-                    self._api_server.operation_url(call.method.operation),
-                    json=call.request.model_dump(mode="json", by_alias=False),
-                    timeout=self._timeout,
-                )
-            else:
-                response = await http_client.post(
-                    self._api_server.operation_url(call.method.operation),
-                    json=call.request.model_dump(mode="json", by_alias=False),
-                    headers={
-                        "Authorization": f"Bearer {call.access_token.get_secret_value()}",
-                    },
-                    timeout=self._timeout,
-                )
+            response = await http_client.post(
+                self._api_server.operation_url(call.method.operation),
+                json=call.request.model_dump(mode="json", by_alias=False),
+                headers=headers,
+                timeout=self._timeout,
+            )
         except asyncio.CancelledError:
             raise
         except httpx.TimeoutException:
