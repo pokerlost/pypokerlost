@@ -52,3 +52,9 @@ The regular gate includes SDK HTTP and authorization-boundary regression tests.
 The currently exported backend foundations implement infrastructure routes only. Token and other
 business methods shown here are typed future contracts; they do not establish working server
 endpoints. Read [project status](docs/project/status.md) before trying them against a foundation.
+
+Canonical verification uses Git, Make and Docker: `make check`, `make coverage`, `make build`
+and `make verify`. The source suite and installed-wheel suite run once in separate contexts;
+installed reports are under `coverage/container/`. Coverage percentages are advisory; tests,
+types, builds and invalid/missing/stale reports fail. `make image` is explicitly notApplicable
+for this SDK library. No release or registry publication is performed by these commands.

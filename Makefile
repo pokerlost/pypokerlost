@@ -1,3 +1,13 @@
+ifneq ($(CONTAINERIZED),1)
+QUALITY_IMAGE := pypokerlost:quality
+RUNTIME_IMAGE := pypokerlost:candidate
+QUALITY_EXTRA_TARGETS := docs-check compile lock-check format-check
+QUALITY_EXTRA_TARGETS += generator-check import-check
+IMAGE_COMMAND = printf "%s\n" "notApplicable: SDK library; wheel and sdist are the delivery artifacts"
+VERIFY_COMMAND = $(MAKE) CONTAINERIZED=1 test-image && $(QUALITY_RUN) python docker/coverage_report.py coverage/container/coverage.json --after coverage/container/.started --output coverage/container/summary.md
+verify: quality-image
+include docker/quality-python.mk
+else
 .DEFAULT_GOAL := help
 
 UV ?= uv
@@ -41,7 +51,8 @@ build: ## Export the canonical wheel and source distribution from Docker.
 
 test-image: ## Run fresh installed-wheel checks without network or a source checkout.
 	@mkdir -p coverage/container
-	docker buildx build --target test --load --tag pypokerlost:test .
+	docker buildx build $(DOCKER_BUILD_ARGS) --target test --load --tag pypokerlost:test .
+	@touch coverage/container/.started
 	docker run --rm --read-only --network none --tmpfs /tmp:rw,noexec,nosuid,size=128m --user "$$(id -u):$$(id -g)" --mount type=bind,source="$$(pwd)/coverage/container",target=/checks/coverage pypokerlost:test
 
 docs-check: ## Enforce Markdown reference policy.
@@ -61,3 +72,5 @@ pre-commit: ## Run every configured hook against all files.
 check: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
 
 check-full: check build pre-commit ## Run the complete repository gate.
+
+endif
