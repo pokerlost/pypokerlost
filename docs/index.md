@@ -39,6 +39,7 @@ This index covers the bearer-header Pokerlost SDK and its standard OpenAPI gener
 - `docs/development/python-style.md`
 - `docs/development/building.md`
 - `docs/development/releases.md`
+- [Version sources and compatibility](development/versioning.md)
 - `docs/development/documentation-style.md`
 - `docs/project/status.md`
 - `docs/project/non-goals.md`

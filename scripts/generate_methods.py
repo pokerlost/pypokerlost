@@ -33,6 +33,7 @@ from pypokerlost.client import PokerlostAPIServer
 from pypokerlost.types import PokerlostOperation
 
 GENERATOR_VERSION = "3.1.0"
+MANIFEST_VERSION = 4
 DEFAULT_OUTPUT = Path("src/pypokerlost")
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_ROOT = REPOSITORY_ROOT / "scripts" / ".generated_methods"
@@ -1629,7 +1630,7 @@ def _manifest_content(
     owned_files: Iterable[Path],
 ) -> str:
     value = {
-        "manifest_version": 4,
+        "manifest_version": MANIFEST_VERSION,
         "generator_version": GENERATOR_VERSION,
         "sources": [
             {

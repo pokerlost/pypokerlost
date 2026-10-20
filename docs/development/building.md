@@ -64,7 +64,7 @@ See `docs/development/commands.md` for the complete static verification sequence
 See `docs/index.md`.
 
 `make build` exports this same artifact target. `make test-image` builds its installed-wheel test
-environment and runs a fresh suite from `/checks` with no package source directory, network or
+environment and runs distinct installed metadata/import/generator acceptance from `/checks` with no package source directory, network or
 writable root filesystem. Test tooling stays in that test image; the scratch artifact target has
 no application process or Kubernetes deployment. Private cache scope belongs to this repository,
 platform and target; restoring it never skips tests. `uv build --no-build-isolation` remains a
@@ -77,3 +77,7 @@ Install the wheel with the `generator` extra to use `pypokerlost-generate --vers
 `scripts/generate_methods.py`; Hatch maps that file into the optional command package at build time.
 The SDK runtime still needs only HTTPX and Pydantic. Test wheel imports from a different directory
 without editable installation, a source checkout, `.git`, or `PYTHONPATH`.
+
+Current wheel/sdist output is `coverage/artifacts/`; older `dist/` artifacts are preserved.
+Installed acceptance verifies that the container installed the exact bytes exported by the
+canonical build, then checks imports, metadata, typing markers and the generator entry point.
