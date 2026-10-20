@@ -81,3 +81,9 @@ without editable installation, a source checkout, `.git`, or `PYTHONPATH`.
 Current wheel/sdist output is `coverage/artifacts/`; older `dist/` artifacts are preserved.
 Installed acceptance verifies that the container installed the exact bytes exported by the
 canonical build, then checks imports, metadata, typing markers and the generator entry point.
+
+After one complete online `make ci-local`, `make OFFLINE=1 ci-local` checks the exact
+quality image, source-bound artifacts and cached installed-test image before running
+fresh checks. Missing or replaced inputs are blocked. Source-bound artifacts and the
+exact installed image are reused; acceptance runs without network. No GitHub credentials
+are needed.
