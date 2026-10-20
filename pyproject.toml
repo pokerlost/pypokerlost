@@ -23,6 +23,7 @@ pypokerlost-generate = "pypokerlost_generator.__main__:main"
 
 [dependency-groups]
 dev = [
+    "packaging>=25,<27",
     "hatchling>=1.27,<2",
     "mypy>=2.3,<3",
     "pre-commit>=4.6.2,<5",
@@ -48,6 +49,8 @@ packages = ["src/pypokerlost"]
 "scripts/__init__.py" = "pypokerlost_generator/__init__.py"
 
 [tool.ruff]
+# This managed helper is formatted and checked by its pinned canonical owner.
+extend-exclude = ["docker/release.py"]
 line-length = 100
 target-version = "py314"
 

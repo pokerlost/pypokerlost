@@ -580,6 +580,7 @@ generator = [
 dev = [
     { name = "hatchling" },
     { name = "mypy" },
+    { name = "packaging" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -599,6 +600,7 @@ provides-extras = ["generator"]
 dev = [
     { name = "hatchling", specifier = ">=1.27,<2" },
     { name = "mypy", specifier = ">=2.3,<3" },
+    { name = "packaging", specifier = ">=25,<27" },
     { name = "pre-commit", specifier = ">=4.6.2,<5" },
     { name = "pytest", specifier = ">=9,<10" },
     { name = "pytest-cov", specifier = ">=7,<8" },

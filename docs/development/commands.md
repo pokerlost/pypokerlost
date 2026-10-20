@@ -1,6 +1,19 @@
 # Development commands
 
-Prepare and verify the locked environment:
+The reproducible daily gate uses Make, Git and Docker/Buildx from this exact root:
+
+```bash
+make help
+make version
+make ci-local
+```
+
+`ci-local` runs the native checks once, reports fresh coverage, builds wheel/sdist, accepts their
+installed imports and checks release metadata. It requires no Actions API, GITHUB_TOKEN or hosted
+artifact. The first dependency build may use the network; `OFFLINE=1` reports missing prepared
+inputs as blocked. BuildKit caches target/platform inputs without caching test execution.
+
+For native diagnostics, prepare and verify the locked environment:
 
 ```bash
 uv lock

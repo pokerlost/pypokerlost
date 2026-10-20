@@ -4,9 +4,24 @@ RUNTIME_IMAGE := pypokerlost:candidate
 QUALITY_EXTRA_TARGETS := docs-check compile lock-check format-check
 QUALITY_EXTRA_TARGETS += generator-check import-check
 IMAGE_COMMAND = printf "%s\n" "notApplicable: SDK library; wheel and sdist are the delivery artifacts"
-VERIFY_COMMAND = $(MAKE) CONTAINERIZED=1 test-image && $(QUALITY_RUN) python docker/coverage_report.py coverage/container/coverage.json --after coverage/container/.started --output coverage/container/summary.md
+BUILD_COMMAND = $(DOCKER) buildx build --file $(BUILD_DOCKERFILE) $(DOCKER_BUILD_ARGS) $(LOCAL_BUILD_NETWORK) --target $(ARTIFACT_TARGET) --output type=local,dest=coverage/artifacts .
+BUILD_RECEIPT_COMMAND = $(QUALITY_RUN) python docker/release.py capture-build --artifact-dir coverage/artifacts
+RELEASE_CHECK_COMMAND = $(QUALITY_RUN) python docker/release.py release-check --artifact-dir coverage/artifacts
+VERIFY_COMMAND = $(MAKE) CONTAINERIZED=1 test-image LOCAL_BUILD_NETWORK='$(LOCAL_BUILD_NETWORK)'
+OFFLINE_PREFLIGHT_COMMAND = $(MAKE) sdk-offline-preflight
+ifeq ($(OFFLINE),1)
+BUILD_COMMAND = $(RELEASE_CHECK_COMMAND)
+VERIFY_COMMAND = $(MAKE) sdk-offline-preflight && $(MAKE) CONTAINERIZED=1 test-image
+endif
+VERSION_COMMAND = $(QUALITY_RUN) python docker/release.py version && $(QUALITY_RUN) python -c 'from scripts.generate_methods import GENERATOR_VERSION, MANIFEST_VERSION; print("generator:", GENERATOR_VERSION, "manifest:", MANIFEST_VERSION)'
 verify: quality-image
 include docker/quality-python.mk
+.PHONY: sdk-offline-preflight
+sdk-offline-preflight:
+	$(RELEASE_CHECK_COMMAND)
+	@test -s coverage/container/test-image-id.txt -a -s coverage/container/source.json || { echo 'BLOCKED: prepare installed acceptance online.' >&2; exit 3; }
+	@test "$$(cat coverage/container/test-image-id.txt)" = "$$($(DOCKER) image inspect pypokerlost:test --format '{{.Id}}')" || { echo 'BLOCKED: cached installed image missing or replaced.' >&2; exit 3; }
+	@test "$$(sed -n 's/.*"contentSha256":"\([a-f0-9]*\)".*/\1/p' coverage/source.json)" = "$$(sed -n 's/.*"contentSha256":"\([a-f0-9]*\)".*/\1/p' coverage/container/source.json)" || { echo 'BLOCKED: cached installed acceptance source changed.' >&2; exit 3; }
 else
 .DEFAULT_GOAL := help
 
@@ -41,7 +56,7 @@ typecheck: ## Run strict mypy.
 	$(UV) run --locked mypy
 
 test: ## Run runtime and generator tests with full statement/branch coverage.
-	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml
+	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml --junitxml=coverage/junit.xml
 
 compile: ## Compile runtime and tooling sources.
 	$(UV) run --locked python -m compileall -q src/pypokerlost scripts
@@ -49,11 +64,15 @@ compile: ## Compile runtime and tooling sources.
 build: ## Export the canonical wheel and source distribution from Docker.
 	docker buildx build --target artifacts --output type=local,dest=dist .
 
-test-image: ## Run fresh installed-wheel checks without network or a source checkout.
+test-image: ## Accept installed metadata/imports/generator without repeating the unit suite.
 	@mkdir -p coverage/container
-	docker buildx build $(DOCKER_BUILD_ARGS) --target test --load --tag pypokerlost:test .
+ifneq ($(OFFLINE),1)
+	docker buildx build $(DOCKER_BUILD_ARGS) $(LOCAL_BUILD_NETWORK) --target test --load --tag pypokerlost:test .
+endif
 	@touch coverage/container/.started
-	docker run --rm --read-only --network none --tmpfs /tmp:rw,noexec,nosuid,size=128m --user "$$(id -u):$$(id -g)" --mount type=bind,source="$$(pwd)/coverage/container",target=/checks/coverage pypokerlost:test
+	docker run --rm --read-only --network none --tmpfs /tmp:rw,noexec,nosuid,size=128m --user "$$(id -u):$$(id -g)" --mount type=bind,source="$$(pwd)/coverage/container",target=/checks/coverage --mount type=bind,source="$$(pwd)/coverage/artifacts",target=/verified-artifacts,readonly pypokerlost:test
+	@docker image inspect pypokerlost:test --format '{{.Id}}' > coverage/container/test-image-id.txt
+	@cp coverage/source.json coverage/container/source.json
 
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py

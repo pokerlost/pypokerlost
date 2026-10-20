@@ -2,13 +2,17 @@
 
 Notable SDK and generator changes are recorded here; publication requires a separate decision.
 
-## Unreleased
+## 0.3.0.dev0 (unreleased)
 
-- Prepare a patch candidate with unchanged runtime wire contracts and generator `3.0.1`.
+- Add `make version`, `release-check` and standalone Docker `ci-local` with source identities,
+  artifact checksums and native installed-generator acceptance. No public SDK contract changes
+  are introduced by this delivery-tooling update.
+
+- Preserve the existing candidate package version and independent generator/manifest versions.
 - Fix schema references inside map values, outer nullable multi-type results and safe failures when
   canonical Pydantic schemas cannot be inspected.
-- Add source and clean installed-wheel protocol/lifecycle/generator suites with strict complete
-  statement/branch coverage; incomplete coverage remains a failing gate.
+- Run the source protocol/lifecycle/generator suite once and accept the exact built wheel
+  separately. Fresh statement/branch coverage below 100% warns; test/build/report errors fail.
 - Exclude local metadata from built archives independently of Git ignore handling.
 
 - Move protected access tokens from JSON bodies to the standard `Authorization: Bearer` header.

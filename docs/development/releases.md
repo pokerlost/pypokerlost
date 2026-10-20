@@ -4,8 +4,8 @@ Current versions:
 
 ```text
 SDK package: read pyproject.toml (unreleased candidate)
-Generator:   3.0.1
-Manifest:    4
+Generator:   read GENERATOR_VERSION (independent)
+Manifest:    read MANIFEST_VERSION (format contract)
 ```
 
 The package version lives in `pyproject.toml`. The independent generator version is printed by
@@ -16,9 +16,18 @@ standard OpenAPI scope extraction and explicit tri-state method metadata. The sh
 Service OpenAPI SemVer and canonical source hashes are recorded in the manifest. Publishing and
 deployment automation remain outside this repository.
 
-The current patch candidate fixes generator schema collection/nullable unions and controlled
-inspection errors, without changing the runtime wire protocol. Source and installed-wheel suites
-must both pass, including valid fresh coverage reports with advisory percentages, before a release decision. CI retains private
-candidate artifacts; it does not publish them. Existing service pins remain on their reviewed
-main-branch SDK revision until a separately reviewed dependency update. A tag, merge or release is
-not implied by candidate metadata.
+Run `make ci-local` for one fresh full source suite, canonical distributions and a separate
+installed-wheel acceptance check. The latter verifies metadata, typing and installed generator
+entrypoint from outside a checkout; it does not repeat the source suite. Reports, JUnit, coverage
+and checksums live under ignored `coverage/`; `coverage/artifacts/` contains the native delivery artifacts.
+Report identity includes source SHA, dirty state and actual content hash. Below-100% coverage
+warns; missing/stale reports and test/type/build failures fail.
+
+Decide compatibility, update canonical version/changelog, run checks, review and integrate into
+main. Check the exact clean integrated commit before creating an annotated `v<version>` tag.
+Inspect workflow triggers first; the current CI runs on main/PR, not tags. Push only the specific
+new tag and verify its remote tag object and peeled commit. Never replace a published tag.
+A billing-blocked required check keeps its PR and branch open; local success is not hosted success.
+GitHub Releases, package publication and deployment remain separate authorization decisions.
+
+See [versioning](versioning.md) and [the documentation index](../index.md).
