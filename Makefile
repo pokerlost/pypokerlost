@@ -1,3 +1,12 @@
+ifeq ($(CONTAINERIZED),1)
+RUFF ?= ruff
+else
+RUFF ?= uvx --from ruff==0.16.4 ruff
+endif
+# Quick dev commands never prepare a product/build image.
+ifneq ($(filter lint format format-check check,$(MAKECMDGOALS)),)
+override CONTAINERIZED := 1
+endif
 ifneq ($(CONTAINERIZED),1)
 QUALITY_IMAGE := pypokerlost:quality
 RUNTIME_IMAGE := pypokerlost:candidate
@@ -15,6 +24,8 @@ VERIFY_COMMAND = $(MAKE) sdk-offline-preflight && $(MAKE) CONTAINERIZED=1 test-i
 endif
 VERSION_COMMAND = $(QUALITY_RUN) python docker/release.py version && $(QUALITY_RUN) python -c 'from scripts.generate_methods import GENERATOR_VERSION, MANIFEST_VERSION; print("generator:", GENERATOR_VERSION, "manifest:", MANIFEST_VERSION)'
 verify: quality-image
+QUALITY_EXTRA_TARGETS += acceptance
+CI_LOCAL_TARGETS ?= acceptance coverage build verify release-check
 include docker/quality-python.mk
 .PHONY: sdk-offline-preflight
 sdk-offline-preflight:
@@ -43,14 +54,14 @@ sync: ## Install every locked dependency group.
 	$(UV) sync --locked --all-groups
 
 format: ## Apply safe Ruff fixes and formatting.
-	$(UV) run --locked ruff check --fix .
-	$(UV) run --locked ruff format .
+	$(RUFF) check --fix .
+	$(RUFF) format .
 
 format-check: ## Check Ruff formatting without changing files.
-	$(UV) run --locked ruff format --check .
+	$(RUFF) format --check .
 
 lint: ## Run Ruff lint without changing files.
-	$(UV) run --locked ruff check .
+	$(RUFF) check .
 
 typecheck: ## Run strict mypy.
 	$(UV) run --locked mypy
@@ -88,8 +99,17 @@ import-check: ## Import the canonical public SDK foundation.
 pre-commit: ## Run every configured hook against all files.
 	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure
 
-check: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
+check: lint format-check ## Fast lint-only gate; no tests/build.
 
-check-full: check build pre-commit ## Run the complete repository gate.
+acceptance: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
+
+check-full: acceptance build pre-commit ## Run the complete repository gate.
 
 endif
+
+.PHONY: dev-policy-help
+help: dev-policy-help
+dev-policy-help:
+	@printf '%s\n' 'Daily: make lint; explicit git push origin dev.' \
+	  'Manual only: test, typecheck, coverage, build, acceptance, ci-local.' \
+	  'Native lint tools must be installed; lint never syncs/builds the application.'

@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAuthenticationStateError,
+    PokerlostConfigurationError,
 )
 from pypokerlost.types import PokerlostAudience, PokerlostStoredToken, PokerlostTokenKey
 
 from ._call import PokerlostCall, claim_reactive_refresh
 from .base import PokerlostCallNext
+
+if TYPE_CHECKING:
+    from pypokerlost.client.pokerlost_api_server import PokerlostAPIServer
 
 
 def _utc_now() -> datetime:
@@ -69,6 +73,7 @@ class PokerlostAuthenticationMiddleware:
         client_id: str,
         audience: PokerlostAudience | str,
         clock: Callable[..., datetime] = _utc_now,
+        server: PokerlostAPIServer | None = None,
     ) -> None:
         if type(client_id) is not str or not client_id:
             raise ValueError("Pokerlost authentication client_id must be a non-empty str")
@@ -77,6 +82,19 @@ class PokerlostAuthenticationMiddleware:
         self._client_id = client_id
         self._audience = PokerlostAudience(audience)
         self._clock = clock
+        if server is not None and server.environment is None:
+            raise PokerlostConfigurationError("Bound authentication requires an environment")
+        self._environment = server.environment if server is not None else None
+        self._origin = server.base_url if server is not None else None
+
+    def validate_target(self, server: PokerlostAPIServer | None) -> None:
+        """Refuse to reuse authentication across origins or environments."""
+        selected_environment = server.environment if server is not None else None
+        selected_origin = server.base_url if server is not None else None
+        if self._environment is None and selected_environment is None:
+            return  # Explicit direct-client legacy mode, never an environment factory.
+        if (self._environment, self._origin) != (selected_environment, selected_origin):
+            raise PokerlostConfigurationError("Authentication target does not match client target")
 
     async def __call__[ResultT](
         self,
@@ -88,6 +106,8 @@ class PokerlostAuthenticationMiddleware:
             return await call_next(call)
 
         key = PokerlostTokenKey(
+            environment=self._environment,
+            origin=self._origin,
             client_id=self._client_id,
             audience=self._audience,
             scopes=call.scopes,

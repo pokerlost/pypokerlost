@@ -77,6 +77,10 @@ class HttpxSession(PokerlostSession):
         self._http_client: httpx.AsyncClient | None = None
         self._lifecycle_lock = asyncio.Lock()
 
+    @property
+    def api_server(self) -> PokerlostAPIServer:
+        return self._api_server
+
     async def start(self) -> None:
         async with self._lifecycle_lock:
             if self._http_client is None:

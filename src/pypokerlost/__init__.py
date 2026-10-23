@@ -6,7 +6,8 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 
 from pypokerlost.application import PokerlostApplication
-from pypokerlost.client import PokerlostClient, PokerlostRequestOptions
+from pypokerlost.client import PokerlostClient, PokerlostEnvironmentConfig, PokerlostRequestOptions
+from pypokerlost.enums import Environment
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAPIError,
@@ -29,6 +30,7 @@ except PackageNotFoundError:
     __version__ = "0+unknown"
 
 __all__ = (
+    "Environment",
     "PokerlostAPIError",
     "PokerlostAccessTokenExpiredError",
     "PokerlostApplication",
@@ -39,6 +41,7 @@ __all__ = (
     "PokerlostClientError",
     "PokerlostConfigurationError",
     "PokerlostConnectionError",
+    "PokerlostEnvironmentConfig",
     "PokerlostError",
     "PokerlostMethod",
     "PokerlostProtocolError",
