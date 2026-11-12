@@ -35,16 +35,15 @@ def api_error(status: int, *, retry_after: float | None = None) -> PokerlostAPIE
 
 
 def retry_call(call: PokerlostCall) -> PokerlostCall:
-    return replace(call, options=PokerlostRequestOptions(PokerlostRetryPolicy()))
+    return replace(call, options=PokerlostRequestOptions(PokerlostRetryPolicy(), retry_safe=True))
 
 
-def test_retry_policy_is_fixed_and_request_options_are_typed() -> None:
+def test_retry_defaults_and_request_options_are_typed() -> None:
     policy = PokerlostRetryPolicy()
     assert (policy.max_attempts, policy.total_budget) == (3, 5.0)
     assert (policy.initial_delay, policy.max_delay, policy.backoff_multiplier) == (0.2, 2.0, 2.0)
     assert policy.retryable_statuses == frozenset({408, 425, 429, 500, 502, 503, 504})
-    with pytest.raises(TypeError):
-        PokerlostRetryPolicy(max_attempts=4)
+    assert PokerlostRetryPolicy(max_attempts=4).max_attempts == 4
     with pytest.raises(FrozenInstanceError):
         policy.max_attempts = 4
     assert PokerlostRequestOptions(policy).retry_policy is policy
@@ -297,6 +296,7 @@ def test_backoff_cap_remains_bounded() -> None:
 def test_refresh_claims_are_nested_and_task_local() -> None:
     with pytest.raises(RuntimeError, match="not initialized"):
         claim_reactive_refresh()
+
     with reactive_refresh_scope():
         assert claim_reactive_refresh() is True
         with reactive_refresh_scope():
@@ -316,3 +316,118 @@ def test_refresh_claims_are_nested_and_task_local() -> None:
     asyncio.run(exercise())
     with pytest.raises(RuntimeError, match="not initialized"):
         claim_reactive_refresh()
+
+
+def test_retry_policy_accepts_bounded_configuration() -> None:
+    policy = PokerlostRetryPolicy(
+        max_attempts=2,
+        initial_delay=0.01,
+        max_delay=0.1,
+        backoff_multiplier=1.5,
+        total_budget=0.5,
+    )
+    assert policy.max_attempts == 2
+    assert policy.total_budget == 0.5
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_attempts", True),
+        ("max_attempts", 0),
+        ("max_attempts", 11),
+        ("max_attempts", 1.5),
+        ("total_budget", 0),
+        ("total_budget", 301),
+        ("total_budget", float("nan")),
+        ("total_budget", float("inf")),
+        ("total_budget", True),
+        ("initial_delay", -1),
+        ("max_delay", 61),
+        ("max_delay", float("-inf")),
+        ("backoff_multiplier", 0.5),
+        ("backoff_multiplier", 11),
+        ("backoff_multiplier", float("nan")),
+    ],
+)
+def test_retry_policy_rejects_invalid_configuration(field: str, value: object) -> None:
+    with pytest.raises(ValueError, match=field):
+        PokerlostRetryPolicy(**{field: value})
+
+
+def test_retry_policy_rejects_delay_above_cap() -> None:
+    with pytest.raises(ValueError, match="initial_delay"):
+        PokerlostRetryPolicy(initial_delay=1, max_delay=0.5)
+
+
+def test_policy_alone_does_not_repeat_a_business_effect(call: PokerlostCall) -> None:
+    attempts = 0
+    error = PokerlostConnectionError(operation="technicalProbe")
+
+    async def committed_then_disconnected(current: PokerlostCall) -> int:
+        nonlocal attempts
+        attempts += 1
+        raise error
+
+    async def exercise() -> None:
+        unsafe = replace(call, options=PokerlostRequestOptions(PokerlostRetryPolicy()))
+        with pytest.raises(PokerlostConnectionError) as caught:
+            await PokerlostRetryMiddleware(jitter=lambda: 0)(unsafe, committed_then_disconnected)
+        assert caught.value is error
+
+    asyncio.run(exercise())
+    assert attempts == 1
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true"])
+def test_retry_safety_requires_an_explicit_boolean(value: object) -> None:
+    with pytest.raises(TypeError, match="retry_safe"):
+        PokerlostRequestOptions(retry_safe=value)
+
+
+def test_budget_cancels_a_stalled_retry_sleep(call: PokerlostCall) -> None:
+    cancelled: list[bool] = []
+    error = PokerlostConnectionError(operation="technicalProbe")
+
+    async def fail(current: PokerlostCall) -> int:
+        raise error
+
+    async def stalled_sleep(delay: float) -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(True)
+
+    async def exercise() -> None:
+        options = PokerlostRequestOptions(PokerlostRetryPolicy(total_budget=0.02), retry_safe=True)
+        async with asyncio.timeout(1):
+            with pytest.raises(PokerlostConnectionError) as caught:
+                await PokerlostRetryMiddleware(jitter=lambda: 0, sleep=stalled_sleep)(
+                    replace(call, options=options), fail
+                )
+        assert caught.value is error
+
+    asyncio.run(exercise())
+    assert cancelled == [True]
+
+
+def test_caller_cancellation_during_retry_sleep_propagates(call: PokerlostCall) -> None:
+    async def fail(current: PokerlostCall) -> int:
+        raise PokerlostConnectionError(operation="technicalProbe")
+
+    async def exercise() -> None:
+        entered = asyncio.Event()
+
+        async def sleep(delay: float) -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        retry = PokerlostRetryMiddleware(jitter=lambda: 0, sleep=sleep)
+        pending = asyncio.create_task(retry(retry_call(call), fail))
+        async with asyncio.timeout(1):
+            await entered.wait()
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+
+    asyncio.run(exercise())

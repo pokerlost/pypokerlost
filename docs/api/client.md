@@ -28,8 +28,10 @@ A non-default target is an explicit short-lived context. Methods are never copie
 revalidation, or mutated with a hidden client binding. `make_request` and metadata-returning paths
 do not exist.
 
-`PokerlostRequestOptions` is an immutable dataclass with only
-`retry_policy: PokerlostRetryPolicy | None`. There is no public headers field.
+`PokerlostRequestOptions` is an immutable dataclass with
+`retry_policy: PokerlostRetryPolicy | None` and `retry_safe: bool = False`.
+The latter attests an operation-owned safe replay contract; a policy alone never repeats a
+business effect. See [retry](retry.md) for validation and migration. There is no public headers field.
 
 Client errors distinguish configuration, connection, timeout, protocol, API, authentication,
 expired access token, authorization, and missing authentication state. They retain only operation,

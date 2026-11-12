@@ -48,4 +48,5 @@ Public methods bypass token state. Protected methods load exact UTC/versioned st
 token only in the bearer header.
 
 Retry remains disabled unless the call supplies `PokerlostRequestOptions` with
-`PokerlostRetryPolicy()`.
+`PokerlostRetryPolicy()` and `retry_safe=True`. The operation owner must guarantee safe replay;
+the flag does not provide server-side idempotency. A policy alone bounds one attempt.

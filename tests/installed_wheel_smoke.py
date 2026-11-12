@@ -7,16 +7,20 @@ import importlib.metadata
 import json
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
-import pypokerlost_generator.__main__ as generator
-
 import pypokerlost
+import pypokerlost_generator.models as generator_models
+import pypokerlost_generator.rendering as generator_rendering
+import pypokerlost_generator.schema as generator_schema
 from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.enums import PokerlostErrorCode, PokerlostScopes, ServiceId
 from pypokerlost.methods import GetToken
 from pypokerlost.middleware import PokerlostAuthenticationMiddleware
+from pypokerlost.types import PokerlostAudience
+from pypokerlost_generator import __main__ as generator
 
 
 def main() -> None:
@@ -30,6 +34,11 @@ def main() -> None:
     assert not (root / "src").exists()
     assert (package / "py.typed").is_file()
     assert "site-packages" in Path(generator.__file__).resolve().parts
+    for module in (generator_models, generator_rendering, generator_schema):
+        assert "site-packages" in Path(module.__file__).resolve().parts
+    assert generator.SourceDocument is generator_models.SourceDocument
+    assert generator.parse_document is generator_schema.parse_document
+    assert generator.render_method is generator_rendering.render_method
     entrypoint = next(
         item for item in distribution.entry_points if item.name == "pypokerlost-generate"
     )
@@ -43,6 +52,30 @@ def main() -> None:
         timeout=30,
     )
     assert result.stdout.strip() == generator.GENERATOR_VERSION
+    assert PokerlostAudience.for_service(ServiceId.ACCOUNTS) == "accountsService"
+    assert PokerlostErrorCode.ACCESS_TOKEN_EXPIRED.value == "POKERLOST_ACCESS_TOKEN_EXPIRED"
+    with tempfile.TemporaryDirectory(prefix="pypokerlost-contract-") as temporary:
+        output = Path(temporary) / "sdk_contract.json"
+        command = [
+            sys.executable,
+            "-I",
+            "-m",
+            "pypokerlost_generator",
+            "contract",
+            "--output",
+            str(output),
+        ]
+        for arguments in (command, [*command, "--check"]):
+            subprocess.run(
+                arguments, cwd="/tmp", capture_output=True, text=True, check=True, timeout=30
+            )
+        contract = json.loads(output.read_text())
+        contract_digest = hashlib.sha256(output.read_bytes()).hexdigest()
+        assert output.with_suffix(".json.sha256").read_text() == (
+            f"{contract_digest}  sdk_contract.json\n"
+        )
+        assert contract["contract_version"] == 1
+        assert contract["service_ids"]["POKER"] == "pokerService"
     for symbol in (
         PokerlostClient,
         PokerlostMethod,
@@ -67,6 +100,7 @@ def main() -> None:
         "artifactSha256": hashes,
         "generator": generator.GENERATOR_VERSION,
         "manifest": generator.MANIFEST_VERSION,
+        "protocolContract": contract["contract_version"],
         "outsideCheckout": True,
         "typed": True,
         "installedEntrypoint": True,

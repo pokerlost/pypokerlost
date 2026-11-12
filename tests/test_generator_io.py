@@ -61,6 +61,18 @@ def test_fetch_requires_positive_explicit_timeout(timeout: object) -> None:
         asyncio.run(generator._fetch_source("https://service.invalid", timeout))
 
 
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf")])
+def test_fetch_rejects_nonfinite_timeout_before_httpx(
+    monkeypatch: pytest.MonkeyPatch, timeout: float
+) -> None:
+    def forbidden_client(**options: object) -> httpx.AsyncClient:
+        pytest.fail("Invalid timeout must fail before HTTP client construction")
+
+    monkeypatch.setattr(httpx, "AsyncClient", forbidden_client)
+    with pytest.raises(generator.GenerationError, match="timeout"):
+        asyncio.run(generator._fetch_source("https://service.invalid", timeout))
+
+
 @pytest.mark.parametrize(
     "url",
     [

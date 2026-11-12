@@ -11,12 +11,55 @@ import httpx
 import pytest
 
 from pypokerlost import PokerlostClient
+from pypokerlost import enums as pokerlost_enums
 from pypokerlost.client import PokerlostAPIServer
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.enums import PokerlostScopes, ServiceId
 from pypokerlost.errors import PokerlostConfigurationError, PokerlostProtocolError
 from pypokerlost.methods import GetToken, PokerlostMethod
 from pypokerlost.session import HttpxSession
-from pypokerlost.types import PokerlostOperation
+from pypokerlost.types import PokerlostAudience, PokerlostOperation, PokerlostResponse
+
+EXPECTED_SERVICE_IDS = {
+    "AUTH": "authService",
+    "ACCOUNTS": "accountsService",
+    "VIRTUAL_MONEY": "virtualMoney",
+    "POKER": "pokerService",
+    "CRYPTO": "cryptoService",
+}
+EXPECTED_COMMON_ERRORS = {
+    "AUTHENTICATION_REQUIRED": "POKERLOST_AUTHENTICATION_REQUIRED",
+    "ACCESS_TOKEN_INVALID": "POKERLOST_ACCESS_TOKEN_INVALID",
+    "ACCESS_TOKEN_EXPIRED": "POKERLOST_ACCESS_TOKEN_EXPIRED",
+    "INSUFFICIENT_SCOPE": "POKERLOST_INSUFFICIENT_SCOPE",
+}
+
+
+def test_protocol_catalogs_preserve_independent_expected_wire_values() -> None:
+    assert {member.name: member.value for member in ServiceId} == EXPECTED_SERVICE_IDS
+    error_code = pokerlost_enums.PokerlostErrorCode
+    assert {member.name: member.value for member in error_code} == EXPECTED_COMMON_ERRORS
+    response = PokerlostResponse[object](ok=False, error="FUTURE_SERVICE_ERROR")
+    assert response.error == "FUTURE_SERVICE_ERROR"
+
+
+@pytest.mark.parametrize("service", list(ServiceId))
+def test_audience_mapping_is_explicit_and_preserves_registered_values(service: ServiceId) -> None:
+    audience = PokerlostAudience.for_service(service)
+    assert type(audience) is PokerlostAudience
+    assert audience == EXPECTED_SERVICE_IDS[service.name]
+    assert PokerlostAudience("futureService") == "futureService"
+
+
+@pytest.mark.parametrize("service", ["authService", "unknownService", "AuthService", None, True])
+def test_audience_mapping_rejects_untyped_routing_identity(service: object) -> None:
+    with pytest.raises(TypeError, match="ServiceId"):
+        PokerlostAudience.for_service(service)
+
+
+@pytest.mark.parametrize("value", ["unknownService", "AuthService", "POKERSERVICE"])
+def test_service_identity_is_closed_and_case_sensitive(value: str) -> None:
+    with pytest.raises(ValueError):
+        ServiceId(value)
 
 
 def _get_token() -> GetToken:

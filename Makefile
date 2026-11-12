@@ -59,7 +59,7 @@ test: ## Run runtime and generator tests with full statement/branch coverage.
 	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml --junitxml=coverage/junit.xml
 
 compile: ## Compile runtime and tooling sources.
-	$(UV) run --locked python -m compileall -q src/pypokerlost scripts
+	$(UV) run --locked python -m compileall -q src/pypokerlost src/pypokerlost_generator scripts
 
 build: ## Export the canonical wheel and source distribution from Docker.
 	docker buildx build --target artifacts --output type=local,dest=dist .
@@ -77,8 +77,9 @@ endif
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py
 
-generator-check: ## Verify that the generator imports and reports its version.
+generator-check: ## Verify the generator version and static SDK contract.
 	$(UV) run --locked python scripts/generate_methods.py --version
+	$(UV) run --locked python scripts/generate_methods.py contract --check
 
 import-check: ## Import the canonical public SDK foundation.
 	$(UV) run --locked python -c "from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions; print(PokerlostClient.__name__, PokerlostMethod.__name__, PokerlostRequestOptions.__name__)"
