@@ -45,7 +45,9 @@ All backticked paths are relative to the repository root. This file defines the 
 - `PokerlostClient.__call__` is the sole client execution method. Do not add `make_request` or
   metadata-returning variants.
 - The current-client context supports `await Method(...)` without mutating method instances.
-- `PokerlostRequestOptions` contains only an optional `PokerlostRetryPolicy`.
+- `PokerlostRequestOptions` contains an optional `PokerlostRetryPolicy` and an explicit
+  `retry_safe` boolean, defaulting to false. The flag attests operation-owned idempotency;
+  it does not establish a server-side contract or add wire fields.
 - `PokerlostRequest` is pure wire data. One private immutable call object owns method, wire request,
   options, exact scopes, and the optional internal access token.
 - Authentication middleware accepts only persistent/shared `PokerlostTokenStore` and
@@ -60,8 +62,10 @@ All backticked paths are relative to the repository root. This file defines the 
 ## Retry and errors
 
 - Retry behavior lives only in `pypokerlost/middleware/retry.py` and is opt-in per call.
-- The fixed policy is three attempts, delays from 0.2 to 2 seconds, multiplier 2, full jitter, and a
-  five-second logical-call budget.
+- Default settings are three attempts, delays from 0.2 to 2 seconds, multiplier 2, full jitter,
+  and a five-second logical-call budget. Constructor bounds live in [retry](../api/retry.md).
+- A policy without `retry_safe=True` bounds one attempt. Repeated POST effects require an
+  explicit operation-owned safe replay contract. Backoff waits consume the same deadline.
 - Retryable statuses are 408, 425, 429, 500, 502, 503, and 504.
 - A protocol error retains safe status metadata so malformed 502/503/504 responses can retry.
 - Cancellation, malformed ordinary 2xx, authentication, authorization, 409, and 422 do not retry.
