@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -14,9 +15,10 @@ import pypokerlost_generator.__main__ as generator
 
 import pypokerlost
 from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.enums import PokerlostErrorCode, PokerlostScopes, ServiceId
 from pypokerlost.methods import GetToken
 from pypokerlost.middleware import PokerlostAuthenticationMiddleware
+from pypokerlost.types import PokerlostAudience
 
 
 def main() -> None:
@@ -43,6 +45,30 @@ def main() -> None:
         timeout=30,
     )
     assert result.stdout.strip() == generator.GENERATOR_VERSION
+    assert PokerlostAudience.for_service(ServiceId.ACCOUNTS) == "accountsService"
+    assert PokerlostErrorCode.ACCESS_TOKEN_EXPIRED.value == "POKERLOST_ACCESS_TOKEN_EXPIRED"
+    with tempfile.TemporaryDirectory(prefix="pypokerlost-contract-") as temporary:
+        output = Path(temporary) / "sdk_contract.json"
+        command = [
+            sys.executable,
+            "-I",
+            "-m",
+            "pypokerlost_generator",
+            "contract",
+            "--output",
+            str(output),
+        ]
+        for arguments in (command, [*command, "--check"]):
+            subprocess.run(
+                arguments, cwd="/tmp", capture_output=True, text=True, check=True, timeout=30
+            )
+        contract = json.loads(output.read_text())
+        contract_digest = hashlib.sha256(output.read_bytes()).hexdigest()
+        assert output.with_suffix(".json.sha256").read_text() == (
+            f"{contract_digest}  sdk_contract.json\n"
+        )
+        assert contract["contract_version"] == 1
+        assert contract["service_ids"]["POKER"] == "pokerService"
     for symbol in (
         PokerlostClient,
         PokerlostMethod,
@@ -67,6 +93,7 @@ def main() -> None:
         "artifactSha256": hashes,
         "generator": generator.GENERATOR_VERSION,
         "manifest": generator.MANIFEST_VERSION,
+        "protocolContract": contract["contract_version"],
         "outsideCheckout": True,
         "typed": True,
         "installedEntrypoint": True,

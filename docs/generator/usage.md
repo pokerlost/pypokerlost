@@ -19,3 +19,22 @@ The `service` command can fetch one raw OpenAPI document from public `GET /getOp
 development, but the multi-document `file` command owns cross-service fixed-point verification.
 
 Failures print sanitized diagnostics without raw service bodies or secrets.
+
+## Static SDK contract
+
+```bash
+uv run --locked python scripts/generate_methods.py contract
+uv run --locked python scripts/generate_methods.py contract --check
+```
+
+This command exports `docs/api/sdk_contract.json` and its `.sha256` sidecar from the
+SDK-owned catalogs and envelope schemas. JSON keys and digest bytes are deterministic;
+`--check` fails on missing or changed files without writing. `make generator-check`
+includes this comparison. The artifact has its own integer `contract_version`, independent
+of the package version and generated-method manifest format.
+
+The optional installed `pypokerlost-generate contract --output path/to/sdk_contract.json`
+entry point exports the same bytes. Output paths are relative to the current directory
+unless absolute; the command never assumes that a source checkout exists. The separate
+method/type manifest does not own these JSON artifacts. See [types](../api/types.md)
+for open audience/error semantics and limits of the exported schemas.

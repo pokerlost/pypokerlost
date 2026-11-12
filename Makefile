@@ -77,8 +77,9 @@ endif
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py
 
-generator-check: ## Verify that the generator imports and reports its version.
+generator-check: ## Verify the generator version and static SDK contract.
 	$(UV) run --locked python scripts/generate_methods.py --version
+	$(UV) run --locked python scripts/generate_methods.py contract --check
 
 import-check: ## Import the canonical public SDK foundation.
 	$(UV) run --locked python -c "from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions; print(PokerlostClient.__name__, PokerlostMethod.__name__, PokerlostRequestOptions.__name__)"

@@ -16,6 +16,7 @@ from pypokerlost.client.pokerlost_api_server import (
     SERVICE_ID_HEADER,
     PokerlostAPIServer,
 )
+from pypokerlost.enums import PokerlostErrorCode
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAPIError,
@@ -32,14 +33,14 @@ from pypokerlost.types import PokerlostResponse
 from .base import PokerlostSession
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
-_EXPIRED_ERROR = "POKERLOST_ACCESS_TOKEN_EXPIRED"
+_EXPIRED_ERROR = PokerlostErrorCode.ACCESS_TOKEN_EXPIRED.value
 _AUTHENTICATION_ERRORS = frozenset(
     {
-        "POKERLOST_AUTHENTICATION_REQUIRED",
-        "POKERLOST_ACCESS_TOKEN_INVALID",
+        PokerlostErrorCode.AUTHENTICATION_REQUIRED.value,
+        PokerlostErrorCode.ACCESS_TOKEN_INVALID.value,
     }
 )
-_AUTHORIZATION_ERRORS = frozenset({"POKERLOST_INSUFFICIENT_SCOPE"})
+_AUTHORIZATION_ERRORS = frozenset({PokerlostErrorCode.INSUFFICIENT_SCOPE.value})
 
 
 class _RejectAllCookiePolicy(DefaultCookiePolicy):

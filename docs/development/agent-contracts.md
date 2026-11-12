@@ -15,6 +15,9 @@ All backticked paths are relative to the repository root. This file defines the 
 - Keep flat focused `client/`, `enums/`, `errors/`, `methods/`, `middleware/`, `session/`, and
   `types/` packages. Never create service-named subpackages or `contracts/`.
 - Every public enum class lives under the flat `pypokerlost/enums/` package.
+- `ServiceId` owns routing identities; explicit audience mappings do not close the
+  separately validated audience vocabulary. `PokerlostErrorCode` owns shared protocol
+  errors only; service-owned machine error strings remain valid.
 - Runtime dependencies remain Pydantic and HTTPX unless a direct requirement changes them.
 
 ## Protocol
@@ -75,6 +78,9 @@ All backticked paths are relative to the repository root. This file defines the 
 ## Generator
 
 - `scripts/generate_methods.py` is the single OpenAPI generator owner.
+- Its `contract` command also owns deterministic static SDK vocabulary/schema exports
+  and their digest sidecar. Check them through its first-class `--check` mode; do not
+  add them to the generated method/type manifest or infer implemented capabilities.
 - One invocation accepts every service OpenAPI 3.1 document and validates global operation, method,
   module, and schema uniqueness before writing.
 - `pypokerlost/enums/pokerlost_scopes.py` is the explicit SDK-owned shared scope catalog. The

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -15,6 +16,7 @@ from typer.testing import CliRunner
 import pypokerlost
 from scripts import generate_methods as generator
 from tests.generator_builders import document, handwritten, object_schema
+from tests.test_sdk_contract import EXPECTED_COMMON_ERRORS, EXPECTED_SERVICE_IDS
 
 
 def source(operation: str = "technicalProbe") -> generator.SourceDocument:
@@ -25,6 +27,75 @@ def files(root: Path) -> dict[str, bytes]:
     return {
         str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
+
+
+def test_protocol_contract_export_is_deterministic_and_matches_wire_catalogs(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "sdk_contract.json"
+    arguments = ["contract", "--output", str(output)]
+    runner = CliRunner()
+    generated = runner.invoke(generator.app, arguments)
+    assert generated.exit_code == 0, generated.output
+    first = files(tmp_path)
+    again = runner.invoke(generator.app, arguments)
+    assert again.exit_code == 0, again.output
+    assert files(tmp_path) == first
+    checked = runner.invoke(generator.app, [*arguments, "--check"])
+    assert checked.exit_code == 0, checked.output
+    contract = json.loads(output.read_text())
+    assert contract["contract_version"] == 1
+    assert contract["service_ids"] == EXPECTED_SERVICE_IDS
+    assert contract["common_error_codes"] == EXPECTED_COMMON_ERRORS
+    assert contract["routing_header"] == "x-pokerlost-serviceId"
+    assert contract["audience"]["open"] is True
+    assert contract["audience"]["service_mapping"] == EXPECTED_SERVICE_IDS
+    schemas = contract["schemas"]
+    assert set(schemas["PokerlostRequest"]["properties"]) == {"payload"}
+    assert set(schemas["PokerlostResponse"]["properties"]) == {
+        "ok",
+        "result",
+        "error",
+        "error_message",
+        "retry_after",
+    }
+    assert schemas["PokerlostResponse"]["properties"]["error"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert output.with_suffix(".json.sha256").read_text() == f"{digest}  sdk_contract.json\n"
+
+
+@pytest.mark.parametrize(
+    "drift", ["missing", "missing_json", "missing_digest", "json", "version", "digest"]
+)
+def test_protocol_contract_check_rejects_drift_without_writing(tmp_path: Path, drift: str) -> None:
+    output = tmp_path / "nested/sdk_contract.json"
+    arguments = ["contract", "--output", str(output)]
+    runner = CliRunner()
+    if drift != "missing":
+        result = runner.invoke(generator.app, arguments)
+        assert result.exit_code == 0, result.output
+        if drift == "missing_json":
+            output.unlink()
+        elif drift == "missing_digest":
+            output.with_suffix(".json.sha256").unlink()
+        elif drift == "json":
+            output.write_text("{}\n")
+        elif drift == "version":
+            value = json.loads(output.read_text())
+            value["contract_version"] = 999
+            output.write_text(json.dumps(value))
+        else:
+            output.with_suffix(".json.sha256").write_text("0" * 64 + "  sdk_contract.json\n")
+    before = files(tmp_path)
+    result = runner.invoke(generator.app, [*arguments, "--check"])
+    assert result.exit_code == 1, result.output
+    assert "out of date" in result.output
+    assert files(tmp_path) == before
+    if drift == "missing":
+        assert not output.parent.exists()
 
 
 def test_write_check_and_stale_cleanup_preserve_unowned_files(tmp_path: Path) -> None:
