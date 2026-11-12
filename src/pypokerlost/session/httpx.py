@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from contextlib import suppress
 from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
 from typing import cast
@@ -70,8 +71,13 @@ class HttpxSession(PokerlostSession):
         api_server: PokerlostAPIServer = DEFAULT_POKERLOST_API_SERVER,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        if type(timeout) is bool or not isinstance(timeout, int | float) or timeout <= 0:
-            raise ValueError("Pokerlost session timeout must be positive")
+        if (
+            type(timeout) is bool
+            or not isinstance(timeout, int | float)
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("Pokerlost session timeout must be finite and positive")
         self._api_server = api_server
         self._timeout = float(timeout)
         self._http_client: httpx.AsyncClient | None = None
