@@ -18,6 +18,47 @@ from scripts import generate_methods as generator
 from tests.generator_builders import document, handwritten, object_schema
 from tests.test_sdk_contract import EXPECTED_COMMON_ERRORS, EXPECTED_SERVICE_IDS
 
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_supported_schema_graph_matches_committed_golden_bytes(tmp_path: Path) -> None:
+    raw = json.loads((FIXTURES / "generator_golden_openapi.json").read_text())
+    expected = json.loads((FIXTURES / "generator_golden_output.json").read_text())
+    parsed = generator.parse_document(raw, label="generator_golden_openapi.json")
+    output = tmp_path / "pypokerlost"
+    generator.generate((parsed,), output=output, check=False)
+    assert {name: content.decode() for name, content in files(output).items()} == (
+        expected["package_files"]
+    )
+    manifest = tmp_path / ".pypokerlost-generated/flat.json"
+    assert manifest.read_text() == expected["manifest"]
+    before = files(tmp_path)
+    generator.generate((parsed,), output=output, check=False)
+    generator.generate((parsed,), output=output, check=True)
+    assert files(tmp_path) == before
+
+
+def test_direct_script_generates_golden_output_from_another_directory(tmp_path: Path) -> None:
+    expected = json.loads((FIXTURES / "generator_golden_output.json").read_text())
+    output = tmp_path / "pypokerlost"
+    arguments = [
+        sys.executable,
+        str(Path(generator.__file__)),
+        "file",
+        str(FIXTURES / "generator_golden_openapi.json"),
+        "--output",
+        str(output),
+    ]
+    for command in [arguments, [*arguments, "--check"]]:
+        completed = subprocess.run(
+            command, cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert completed.returncode == 0, completed.stderr
+    assert {name: content.decode() for name, content in files(output).items()} == (
+        expected["package_files"]
+    )
+    assert (tmp_path / ".pypokerlost-generated/flat.json").read_text() == expected["manifest"]
+
 
 def source(operation: str = "technicalProbe") -> generator.SourceDocument:
     return generator.parse_document(document(operation), label="synthetic.json")

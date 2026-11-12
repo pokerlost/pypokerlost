@@ -11,7 +11,8 @@ All backticked paths are relative to the repository root. This file defines the 
 
 ## Architecture
 
-- Runtime code lives only under `src/pypokerlost/`; public imports remain `pypokerlost`.
+- SDK runtime code lives only under `src/pypokerlost/`; public imports remain `pypokerlost`.
+  Optional generator implementation modules live under `src/pypokerlost_generator/`.
 - Keep flat focused `client/`, `enums/`, `errors/`, `methods/`, `middleware/`, `session/`, and
   `types/` packages. Never create service-named subpackages or `contracts/`.
 - Every public enum class lives under the flat `pypokerlost/enums/` package.
@@ -77,7 +78,9 @@ All backticked paths are relative to the repository root. This file defines the 
 
 ## Generator
 
-- `scripts/generate_methods.py` is the single OpenAPI generator owner.
+- `scripts/generate_methods.py` owns the compatible OpenAPI generator facade, CLI and
+  filesystem side effects. Pure models, validation/resolution and rendering have focused
+  modules in `pypokerlost_generator`; re-export existing facade symbols explicitly.
 - Its `contract` command also owns deterministic static SDK vocabulary/schema exports
   and their digest sidecar. Check them through its first-class `--check` mode; do not
   add them to the generated method/type manifest or infer implemented capabilities.

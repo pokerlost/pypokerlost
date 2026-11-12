@@ -11,14 +11,16 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-import pypokerlost_generator.__main__ as generator
-
 import pypokerlost
+import pypokerlost_generator.models as generator_models
+import pypokerlost_generator.rendering as generator_rendering
+import pypokerlost_generator.schema as generator_schema
 from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions
 from pypokerlost.enums import PokerlostErrorCode, PokerlostScopes, ServiceId
 from pypokerlost.methods import GetToken
 from pypokerlost.middleware import PokerlostAuthenticationMiddleware
 from pypokerlost.types import PokerlostAudience
+from pypokerlost_generator import __main__ as generator
 
 
 def main() -> None:
@@ -32,6 +34,11 @@ def main() -> None:
     assert not (root / "src").exists()
     assert (package / "py.typed").is_file()
     assert "site-packages" in Path(generator.__file__).resolve().parts
+    for module in (generator_models, generator_rendering, generator_schema):
+        assert "site-packages" in Path(module.__file__).resolve().parts
+    assert generator.SourceDocument is generator_models.SourceDocument
+    assert generator.parse_document is generator_schema.parse_document
+    assert generator.render_method is generator_rendering.render_method
     entrypoint = next(
         item for item in distribution.entry_points if item.name == "pypokerlost-generate"
     )
