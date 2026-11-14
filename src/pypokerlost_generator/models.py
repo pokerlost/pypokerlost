@@ -60,6 +60,7 @@ INFRASTRUCTURE_GET_OPERATIONS = frozenset(
 ENVELOPE_FIELDS = frozenset({"ok", "result", "error", "error_message", "retry_after"})
 
 CANONICAL_SCHEMA_TYPES: dict[str, object] = {
+    "Environment": pokerlost_enums.Environment,
     "GetJwksRequest": pokerlost_types.GetJwksRequest,
     "GetJwksResponse": pokerlost_types.GetJwksResponse,
     "GetTokenRequest": pokerlost_types.GetTokenRequest,
@@ -92,7 +93,9 @@ CANONICAL_SCHEMA_TYPES: dict[str, object] = {
 
 CANONICAL_TYPES = frozenset(CANONICAL_SCHEMA_TYPES)
 
-CANONICAL_ENUM_TYPES = frozenset({"PokerlostScopes", "PrincipalStatus", "PrincipalType"})
+CANONICAL_ENUM_TYPES = frozenset(
+    {"Environment", "PokerlostScopes", "PrincipalStatus", "PrincipalType"}
+)
 
 CANONICAL_FUNCTION_EXPORTS: frozenset[str] = frozenset()
 

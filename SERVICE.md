@@ -29,6 +29,10 @@
 - A concrete method uses `None` for no access-token scopes or a non-empty tuple of exact
   `PokerlostScopes` members. Empty and missing metadata are invalid.
 - The middleware loads exact shared state by client identity, audience, and canonical scopes.
+- Explicit environment clients additionally bind keys to an environment and canonical origin.
+  Store and refresh results must carry the exact local `PokerlostStoredToken.key` provenance.
+  Consumers must migrate their persistence/acquisition explicitly; unbound legacy state is not a
+  fallback. Legacy direct keys/state keep their serialization and provide no cross-origin isolation.
 - Missing state never causes automatic acquisition. Consumers explicitly call `GetToken` and
   persist validated state before protected clients start.
 - Only exact `POKERLOST_ACCESS_TOKEN_EXPIRED` may invoke the injected refresher once. Local UTC

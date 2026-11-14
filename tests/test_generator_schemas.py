@@ -70,7 +70,10 @@ def test_map_value_schemas_are_reachable_and_generated(tmp_path: Path) -> None:
     assert (output / "types/technical_leaf.py").is_file()
 
 
-@pytest.mark.parametrize("name", ["PokerlostToken", "PokerlostTokenKey", "JSONValue"])
+@pytest.mark.parametrize(
+    "name",
+    ["Environment", "PokerlostToken", "PokerlostTokenKey", "PokerlostStoredToken", "JSONValue"],
+)
 def test_canonical_references_are_verified_and_never_rewritten(name: str, tmp_path: Path) -> None:
     schema = TypeAdapter(generator.CANONICAL_SCHEMA_TYPES[name]).json_schema(
         ref_template="#/components/schemas/{model}"

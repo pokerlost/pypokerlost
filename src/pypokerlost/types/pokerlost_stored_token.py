@@ -8,6 +8,7 @@ from typing import Annotated
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 
 from .pokerlost_token import PokerlostToken
+from .pokerlost_token_key import PokerlostTokenKey
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -15,7 +16,7 @@ def _as_utc(value: datetime) -> datetime:
 
 
 class PokerlostStoredToken(BaseModel):
-    """Encrypted-at-rest token data with absolute UTC expiry and CAS version."""
+    """Encrypted-at-rest state with UTC expiry, CAS version, and optional local key provenance."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -28,3 +29,5 @@ class PokerlostStoredToken(BaseModel):
     token: PokerlostToken = Field(repr=False)
     expires_at: Annotated[AwareDatetime, AfterValidator(_as_utc)]
     version: Annotated[int, Field(strict=True, gt=0)]
+
+    key: PokerlostTokenKey | None = Field(default=None, exclude_if=lambda value: value is None)
