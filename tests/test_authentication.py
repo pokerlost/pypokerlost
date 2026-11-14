@@ -12,8 +12,8 @@ import httpx
 import pytest
 
 from pypokerlost import PokerlostClient
-from pypokerlost.client import PokerlostRequestOptions
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.client import PokerlostAPIServer, PokerlostRequestOptions
+from pypokerlost.enums import Environment, PokerlostScopes
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAuthenticationError,
@@ -325,12 +325,23 @@ def test_refresh_allowance_is_shared_across_generic_retry_attempts(
 
 
 @pytest.mark.parametrize("late_expiry", [False, True])
+@pytest.mark.parametrize("bound", [False, True])
 def test_concurrent_clients_share_the_service_owned_refresh_lease(
-    call: PokerlostCall, late_expiry: bool
+    call: PokerlostCall, late_expiry: bool, bound: bool
 ) -> None:
     """Characterize the injected port contract, not a production persistence adapter."""
-    original = stored()
-    fresh = stored(2)
+    target = (
+        PokerlostAPIServer("https://test.invalid", environment=Environment.TEST) if bound else None
+    )
+    key = PokerlostTokenKey(
+        client_id="synthetic-client",
+        audience="accountsService",
+        scopes=(SCOPE,),
+        environment=target.environment if target else None,
+        origin=target.base_url if target else None,
+    )
+    original = stored().model_copy(update={"key": key if bound else None})
+    fresh = stored(2).model_copy(update={"key": key if bound else None})
 
     async def exercise() -> None:
         lease = asyncio.Lock()
@@ -396,6 +407,7 @@ def test_concurrent_clients_share_the_service_owned_refresh_lease(
                 client_id="synthetic-client",
                 audience="accountsService",
                 clock=lambda: NOW,
+                server=target,
             )
             for _ in range(2)
         ]
@@ -412,6 +424,8 @@ def test_concurrent_clients_share_the_service_owned_refresh_lease(
         assert store.state is fresh
         assert invalidated_versions == {1}
         assert len(store.invalidated) == 2
+        assert all(loaded == key for loaded in store.loaded)
+        assert all(invalidated == key for invalidated, _ in store.invalidated)
 
     asyncio.run(exercise())
 

@@ -59,6 +59,11 @@ All backticked paths are relative to the repository root. This file defines the 
 - The SDK never stores client credentials, automatically calls `GetToken`, owns a process cache,
   starts background refresh, or provides production persistence.
 - Stored state uses an absolute timezone-aware UTC expiry and positive CAS version.
+- Explicit environment clients bind authentication to the same environment and canonical origin.
+  Their persistent keys include both fields; load and refresh state must carry exact local
+  `PokerlostStoredToken.key` provenance. Legacy unbound keys/state retain their serialized shape,
+  provide no cross-origin isolation, and never become fallback state for namespaced calls.
+  Consumers own the opt-in namespace/acquisition migration; metadata never enters RPC JSON.
 - Missing state fails locally. Only exact `POKERLOST_ACCESS_TOKEN_EXPIRED` can trigger one refresh;
   the exact request can be replayed once. Neither local expiry metadata nor any other error triggers
   refresh.
