@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+import httpx
+
 from pypokerlost.enums import Environment, ServiceId
 from pypokerlost.types import PokerlostOperation
 
@@ -54,15 +56,11 @@ class PokerlostAPIServer:
             or parsed.fragment
         ):
             raise ValueError("Pokerlost API base URL must identify the origin root")
-        host = parsed.hostname.lower()
-        if ":" in host:
-            host = f"[{host}]"
-        suffix = (
-            f":{port}"
-            if port is not None and port != {"http": 80, "https": 443}[parsed.scheme]
-            else ""
-        )
-        object.__setattr__(self, "base_url", f"{parsed.scheme}://{host}{suffix}")
+        try:
+            canonical = httpx.URL(self.base_url).copy_with(path="", query=None, fragment=None)
+        except httpx.InvalidURL:
+            raise ValueError("Invalid Pokerlost API origin") from None
+        object.__setattr__(self, "base_url", str(canonical))
 
     def operation_url(self, operation: PokerlostOperation) -> str:
         return f"{self.base_url}/{operation}"

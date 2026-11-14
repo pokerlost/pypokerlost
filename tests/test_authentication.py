@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
 
@@ -11,8 +12,8 @@ import httpx
 import pytest
 
 from pypokerlost import PokerlostClient
-from pypokerlost.client import PokerlostRequestOptions
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.client import PokerlostAPIServer, PokerlostRequestOptions
+from pypokerlost.enums import Environment, PokerlostScopes
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAuthenticationError,
@@ -26,6 +27,7 @@ from pypokerlost.middleware import (
     PokerlostRetryMiddleware,
     PokerlostRetryPolicy,
 )
+from pypokerlost.middleware._call import PokerlostCall
 from pypokerlost.types import PokerlostStoredToken, PokerlostToken, PokerlostTokenKey
 
 type Transport = Callable[[Callable[[httpx.Request], httpx.Response]], list[httpx.Request]]
@@ -312,13 +314,120 @@ def test_refresh_allowance_is_shared_across_generic_retry_attempts(
             assert client.middleware[1] is auth
             with pytest.raises(PokerlostAccessTokenExpiredError):
                 await client(
-                    protected_method, options=PokerlostRequestOptions(PokerlostRetryPolicy())
+                    protected_method,
+                    options=PokerlostRequestOptions(PokerlostRetryPolicy(), retry_safe=True),
                 )
 
     asyncio.run(exercise())
     assert len(requests) == 3
     assert len(refresher.calls) == 1
     assert len(store.invalidated) == 1
+
+
+@pytest.mark.parametrize("late_expiry", [False, True])
+@pytest.mark.parametrize("bound", [False, True])
+def test_concurrent_clients_share_the_service_owned_refresh_lease(
+    call: PokerlostCall, late_expiry: bool, bound: bool
+) -> None:
+    """Characterize the injected port contract, not a production persistence adapter."""
+    target = (
+        PokerlostAPIServer("https://test.invalid", environment=Environment.TEST) if bound else None
+    )
+    key = PokerlostTokenKey(
+        client_id="synthetic-client",
+        audience="accountsService",
+        scopes=(SCOPE,),
+        environment=target.environment if target else None,
+        origin=target.base_url if target else None,
+    )
+    original = stored().model_copy(update={"key": key if bound else None})
+    fresh = stored(2).model_copy(update={"key": key if bound else None})
+
+    async def exercise() -> None:
+        lease = asyncio.Lock()
+        both_expired = asyncio.Event()
+        refreshed = asyncio.Event()
+        refresh_effects: list[int] = []
+        invalidated_versions: set[int] = set()
+
+        class VersionedStore(TokenStore):
+            async def invalidate(
+                self, key: PokerlostTokenKey, /, *, expected_version: int | None = None
+            ) -> None:
+                await super().invalidate(key, expected_version=expected_version)
+                if self.state is not None and self.state.version == expected_version:
+                    invalidated_versions.add(self.state.version)
+
+        store = VersionedStore(original)
+
+        async def refresh(
+            key: PokerlostTokenKey, current: PokerlostStoredToken, /
+        ) -> PokerlostStoredToken:
+            async with lease:
+                latest = await store.load(key)
+                assert latest is not None
+                if latest.version > current.version:
+                    return latest
+                await asyncio.sleep(0)
+                refresh_effects.append(current.version)
+                saved = await store.save(key, fresh, expected_version=current.version)
+                refreshed.set()
+                return saved
+
+        expired_calls = 0
+
+        async def execute(current: PokerlostCall) -> int:
+            nonlocal expired_calls
+            assert current.request is call.request
+            assert current.access_token is not None
+            if current.access_token.get_secret_value() == "synthetic-access-1":
+                expired_calls += 1
+                order = expired_calls
+                if order == 2:
+                    both_expired.set()
+                    if late_expiry:
+                        await refreshed.wait()
+                else:
+                    await both_expired.wait()
+                raise PokerlostAccessTokenExpiredError(
+                    operation="technicalProbe",
+                    status_code=401,
+                    error="POKERLOST_ACCESS_TOKEN_EXPIRED",
+                    error_message=None,
+                    retry_after=None,
+                )
+            assert current.access_token.get_secret_value() == "synthetic-access-2"
+            return 7
+
+        protected = replace(call, scopes=(SCOPE,))
+        middleware = [
+            PokerlostAuthenticationMiddleware(
+                token_store=store,
+                token_refresher=refresh,
+                client_id="synthetic-client",
+                audience="accountsService",
+                clock=lambda: NOW,
+                server=target,
+            )
+            for _ in range(2)
+        ]
+
+        async def request(auth: PokerlostAuthenticationMiddleware) -> int:
+            return await PokerlostRetryMiddleware()(
+                protected, lambda current: auth(current, execute)
+            )
+
+        async with asyncio.timeout(1):
+            assert await asyncio.gather(*(request(auth) for auth in middleware)) == [7, 7]
+        assert expired_calls == 2
+        assert refresh_effects == [1]
+        assert store.state is fresh
+        assert invalidated_versions == {1}
+        assert len(store.invalidated) == 2
+        assert all(loaded == key for loaded in store.loaded)
+        assert all(invalidated == key for invalidated, _ in store.invalidated)
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize("client_id", [None, "", True, 1])

@@ -11,10 +11,14 @@ All backticked paths are relative to the repository root. This file defines the 
 
 ## Architecture
 
-- Runtime code lives only under `src/pypokerlost/`; public imports remain `pypokerlost`.
+- SDK runtime code lives only under `src/pypokerlost/`; public imports remain `pypokerlost`.
+  Optional generator implementation modules live under `src/pypokerlost_generator/`.
 - Keep flat focused `client/`, `enums/`, `errors/`, `methods/`, `middleware/`, `session/`, and
   `types/` packages. Never create service-named subpackages or `contracts/`.
 - Every public enum class lives under the flat `pypokerlost/enums/` package.
+- `ServiceId` owns routing identities; explicit audience mappings do not close the
+  separately validated audience vocabulary. `PokerlostErrorCode` owns shared protocol
+  errors only; service-owned machine error strings remain valid.
 - Runtime dependencies remain Pydantic and HTTPX unless a direct requirement changes them.
 
 ## Protocol
@@ -45,7 +49,9 @@ All backticked paths are relative to the repository root. This file defines the 
 - `PokerlostClient.__call__` is the sole client execution method. Do not add `make_request` or
   metadata-returning variants.
 - The current-client context supports `await Method(...)` without mutating method instances.
-- `PokerlostRequestOptions` contains only an optional `PokerlostRetryPolicy`.
+- `PokerlostRequestOptions` contains an optional `PokerlostRetryPolicy` and an explicit
+  `retry_safe` boolean, defaulting to false. The flag attests operation-owned idempotency;
+  it does not establish a server-side contract or add wire fields.
 - `PokerlostRequest` is pure wire data. One private immutable call object owns method, wire request,
   options, exact scopes, and the optional internal access token.
 - Authentication middleware accepts only persistent/shared `PokerlostTokenStore` and
@@ -53,6 +59,11 @@ All backticked paths are relative to the repository root. This file defines the 
 - The SDK never stores client credentials, automatically calls `GetToken`, owns a process cache,
   starts background refresh, or provides production persistence.
 - Stored state uses an absolute timezone-aware UTC expiry and positive CAS version.
+- Explicit environment clients bind authentication to the same environment and canonical origin.
+  Their persistent keys include both fields; load and refresh state must carry exact local
+  `PokerlostStoredToken.key` provenance. Legacy unbound keys/state retain their serialized shape,
+  provide no cross-origin isolation, and never become fallback state for namespaced calls.
+  Consumers own the opt-in namespace/acquisition migration; metadata never enters RPC JSON.
 - Missing state fails locally. Only exact `POKERLOST_ACCESS_TOKEN_EXPIRED` can trigger one refresh;
   the exact request can be replayed once. Neither local expiry metadata nor any other error triggers
   refresh.
@@ -60,8 +71,10 @@ All backticked paths are relative to the repository root. This file defines the 
 ## Retry and errors
 
 - Retry behavior lives only in `pypokerlost/middleware/retry.py` and is opt-in per call.
-- The fixed policy is three attempts, delays from 0.2 to 2 seconds, multiplier 2, full jitter, and a
-  five-second logical-call budget.
+- Default settings are three attempts, delays from 0.2 to 2 seconds, multiplier 2, full jitter,
+  and a five-second logical-call budget. Constructor bounds live in [retry](../api/retry.md).
+- A policy without `retry_safe=True` bounds one attempt. Repeated POST effects require an
+  explicit operation-owned safe replay contract. Backoff waits consume the same deadline.
 - Retryable statuses are 408, 425, 429, 500, 502, 503, and 504.
 - A protocol error retains safe status metadata so malformed 502/503/504 responses can retry.
 - Cancellation, malformed ordinary 2xx, authentication, authorization, 409, and 422 do not retry.
@@ -70,7 +83,12 @@ All backticked paths are relative to the repository root. This file defines the 
 
 ## Generator
 
-- `scripts/generate_methods.py` is the single OpenAPI generator owner.
+- `scripts/generate_methods.py` owns the compatible OpenAPI generator facade, CLI and
+  filesystem side effects. Pure models, validation/resolution and rendering have focused
+  modules in `pypokerlost_generator`; re-export existing facade symbols explicitly.
+- Its `contract` command also owns deterministic static SDK vocabulary/schema exports
+  and their digest sidecar. Check them through its first-class `--check` mode; do not
+  add them to the generated method/type manifest or infer implemented capabilities.
 - One invocation accepts every service OpenAPI 3.1 document and validates global operation, method,
   module, and schema uniqueness before writing.
 - `pypokerlost/enums/pokerlost_scopes.py` is the explicit SDK-owned shared scope catalog. The

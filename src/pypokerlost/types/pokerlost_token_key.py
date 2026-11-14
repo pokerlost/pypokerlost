@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from pypokerlost.enums import Environment, PokerlostScopes
 
@@ -17,7 +24,7 @@ def _parse_scopes(value: object) -> tuple[PokerlostScopes, ...]:
 
 
 class PokerlostTokenKey(BaseModel):
-    """Separate shared token state by client, audience, and exact scopes."""
+    """Identify shared token state, optionally partitioned by environment and origin."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -27,8 +34,10 @@ class PokerlostTokenKey(BaseModel):
         hide_input_in_errors=True,
     )
 
-    environment: Environment | None = None
-    origin: Annotated[str | None, StringConstraints(min_length=1)] = None
+    environment: Environment | None = Field(default=None, exclude_if=lambda value: value is None)
+    origin: Annotated[str | None, StringConstraints(min_length=1)] = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     client_id: Annotated[str, StringConstraints(strict=True, min_length=1)]
     audience: PokerlostAudience
     scopes: Annotated[tuple[PokerlostScopes, ...], BeforeValidator(_parse_scopes)]

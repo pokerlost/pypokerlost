@@ -29,7 +29,7 @@ make pre-commit
 make check
 make build
 make test-image
-uv run --locked python -m compileall -q src/pypokerlost scripts
+uv run --locked python -m compileall -q src/pypokerlost src/pypokerlost_generator scripts
 git diff --check
 ```
 

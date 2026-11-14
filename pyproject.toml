@@ -42,11 +42,10 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pypokerlost"]
+packages = ["src/pypokerlost", "src/pypokerlost_generator"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "scripts/generate_methods.py" = "pypokerlost_generator/__main__.py"
-"scripts/__init__.py" = "pypokerlost_generator/__init__.py"
 
 [tool.ruff]
 # This managed helper is formatted and checked by its pinned canonical owner.
@@ -65,7 +64,7 @@ markers = ["unit: isolated unit tests", "contract: public SDK contract tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["pypokerlost", "scripts"]
+source = ["pypokerlost", "pypokerlost_generator", "scripts"]
 patch = ["subprocess"]
 
 [tool.coverage.paths]
@@ -86,7 +85,7 @@ output = "coverage/coverage.xml"
 python_version = "3.14"
 plugins = ["pydantic.mypy"]
 strict = true
-files = ["src/pypokerlost", "scripts"]
+files = ["src/pypokerlost", "src/pypokerlost_generator", "scripts"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
