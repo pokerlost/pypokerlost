@@ -4,10 +4,13 @@ The SDK distribution has one canonical PEP 440 version in `pyproject.toml`; runt
 is derived by `importlib.metadata`. The generator has its existing independent version in
 `GENERATOR_VERSION`, and its generated ownership-manifest format is `MANIFEST_VERSION` in
 `scripts/generate_methods.py`. `make version` shows all three without changing them.
-The current tooling change does not alter the SDK version, generator contract or manifest format.
+The release target is derived from the canonical package version, without a second version file.
+Allocation changes only an isolated source export; it does not rewrite permanent branches.
+Generator and manifest versions are not changed by package-release allocation.
 
 The generator is shipped in the SDK wheel but records its own generation behavior version.
-Primary package tags use `v<package-version>`; independently reviewed generator milestones use
+Primary package tags use `vX.Y.Z-dev.N` or `vX.Y.Z`; their native PEP 440 versions are
+`X.Y.Z.devN` or `X.Y.Z`. Independently reviewed generator milestones use
 `generator/v<generator-version>`. A manifest format revision changes only when consumers need a
 new format contract, never for a README edit or packaging-tool change. Existing generated files
 and service pins remain on their reviewed revisions until an explicit generator/dependency update.

@@ -48,8 +48,8 @@ packages = ["src/pypokerlost", "src/pypokerlost_generator"]
 "scripts/generate_methods.py" = "pypokerlost_generator/__main__.py"
 
 [tool.ruff]
-# This managed helper is formatted and checked by its pinned canonical owner.
-extend-exclude = ["docker/release.py"]
+# These managed helpers retain the formatting of their pinned canonical owner.
+extend-exclude = ["docker/release.py", "docker/python_release.py"]
 line-length = 100
 target-version = "py314"
 
