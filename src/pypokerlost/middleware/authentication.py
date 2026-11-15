@@ -164,6 +164,11 @@ class PokerlostAuthenticationMiddleware:
         operation: str,
         source: str,
     ) -> None:
+        if (key.environment is not None or state.key is not None) and state.key != key:
+            raise PokerlostAuthenticationStateError(
+                f"{source} returned state for a different or unbound token namespace",
+                operation=operation,
+            )
         if state.token.audience != key.audience or state.token.scopes != key.scopes:
             raise PokerlostAuthenticationStateError(
                 f"{source} returned state for a different token key",

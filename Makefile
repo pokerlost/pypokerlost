@@ -1,12 +1,3 @@
-ifeq ($(CONTAINERIZED),1)
-RUFF ?= ruff
-else
-RUFF ?= uvx --from ruff==0.16.4 ruff
-endif
-# Quick dev commands never prepare a product/build image.
-ifneq ($(filter lint format format-check check,$(MAKECMDGOALS)),)
-override CONTAINERIZED := 1
-endif
 ifneq ($(CONTAINERIZED),1)
 QUALITY_IMAGE := pypokerlost:quality
 RUNTIME_IMAGE := pypokerlost:candidate
@@ -24,8 +15,6 @@ VERIFY_COMMAND = $(MAKE) sdk-offline-preflight && $(MAKE) CONTAINERIZED=1 test-i
 endif
 VERSION_COMMAND = $(QUALITY_RUN) python docker/release.py version && $(QUALITY_RUN) python -c 'from scripts.generate_methods import GENERATOR_VERSION, MANIFEST_VERSION; print("generator:", GENERATOR_VERSION, "manifest:", MANIFEST_VERSION)'
 verify: quality-image
-QUALITY_EXTRA_TARGETS += acceptance
-CI_LOCAL_TARGETS ?= acceptance coverage build verify release-check
 include docker/quality-python.mk
 .PHONY: sdk-offline-preflight
 sdk-offline-preflight:
@@ -54,14 +43,14 @@ sync: ## Install every locked dependency group.
 	$(UV) sync --locked --all-groups
 
 format: ## Apply safe Ruff fixes and formatting.
-	$(RUFF) check --fix .
-	$(RUFF) format .
+	$(UV) run --locked ruff check --fix .
+	$(UV) run --locked ruff format .
 
 format-check: ## Check Ruff formatting without changing files.
-	$(RUFF) format --check .
+	$(UV) run --locked ruff format --check .
 
 lint: ## Run Ruff lint without changing files.
-	$(RUFF) check .
+	$(UV) run --locked ruff check .
 
 typecheck: ## Run strict mypy.
 	$(UV) run --locked mypy
@@ -70,7 +59,7 @@ test: ## Run runtime and generator tests with full statement/branch coverage.
 	$(UV) run --locked pytest --cov --cov-report=term-missing --cov-report=json --cov-report=xml --junitxml=coverage/junit.xml
 
 compile: ## Compile runtime and tooling sources.
-	$(UV) run --locked python -m compileall -q src/pypokerlost scripts
+	$(UV) run --locked python -m compileall -q src/pypokerlost src/pypokerlost_generator scripts
 
 build: ## Export the canonical wheel and source distribution from Docker.
 	docker buildx build --target artifacts --output type=local,dest=dist .
@@ -88,8 +77,9 @@ endif
 docs-check: ## Enforce Markdown reference policy.
 	$(UV) run --locked python scripts/check_documentation.py
 
-generator-check: ## Verify that the generator imports and reports its version.
+generator-check: ## Verify the generator version and static SDK contract.
 	$(UV) run --locked python scripts/generate_methods.py --version
+	$(UV) run --locked python scripts/generate_methods.py contract --check
 
 import-check: ## Import the canonical public SDK foundation.
 	$(UV) run --locked python -c "from pypokerlost import PokerlostClient, PokerlostMethod, PokerlostRequestOptions; print(PokerlostClient.__name__, PokerlostMethod.__name__, PokerlostRequestOptions.__name__)"
@@ -99,17 +89,8 @@ import-check: ## Import the canonical public SDK foundation.
 pre-commit: ## Run every configured hook against all files.
 	$(UV) run --locked pre-commit run --all-files --show-diff-on-failure
 
-check: lint format-check ## Fast lint-only gate; no tests/build.
+check: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
 
-acceptance: lock-check format-check lint typecheck test compile docs-check generator-check import-check ## Run the regular non-mutating gate.
-
-check-full: acceptance build pre-commit ## Run the complete repository gate.
+check-full: check build pre-commit ## Run the complete repository gate.
 
 endif
-
-.PHONY: dev-policy-help
-help: dev-policy-help
-dev-policy-help:
-	@printf '%s\n' 'Daily: make lint; explicit git push origin dev.' \
-	  'Manual only: test, typecheck, coverage, build, acceptance, ci-local.' \
-	  'Native lint tools must be installed; lint never syncs/builds the application.'

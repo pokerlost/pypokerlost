@@ -22,3 +22,8 @@ prove ownership.
 
 Manual future-facing stubs remain outside ownership. When an endpoint later appears, its direct
 metadata and payload/result contract must exactly match OpenAPI or generation fails.
+
+The separate `contract` command exports SDK-owned vocabulary and envelope schemas to
+`docs/api/sdk_contract.json` with a digest sidecar. These consumer artifacts have their
+own contract version and are outside the method/type manifest. They do not establish
+service capabilities or generate runtime Dart/TypeScript dependencies on Python.

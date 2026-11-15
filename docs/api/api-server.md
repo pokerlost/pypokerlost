@@ -15,7 +15,11 @@ url = api_server.operation_url(PokerlostOperation("getBalance"))
 The dataclass constructor signature is:
 
 ```python
-PokerlostAPIServer(base_url: str, service_id: ServiceId | None = None)
+PokerlostAPIServer(
+    base_url: str,
+    service_id: ServiceId | None = None,
+    environment: Environment | None = None,
+)
 ```
 
 The URL must identify an origin root. User information, a non-root path, query, and fragment are
@@ -98,7 +102,15 @@ identity, audience and scopes. Keep their database/cache namespaces separate too
 legacy tokens into new environment keys automatically. No process-global selected environment exists.
 
 The direct `PokerlostAPIServer(base_url, service_id)` API remains available in legacy explicit-origin
-mode. URLs now canonicalize host case/default ports and reject malformed ports, whitespace and
-credentials. Legacy token keys have null environment/origin; switching to the environment factory
-requires explicit scoped token acquisition. The new regressions are source-only, not executed in
-the lint-only dev cycle.
+mode. URLs use HTTPX canonicalization, including IDNA ASCII hostnames and default-port removal,
+so equivalent Unicode/punycode origins cannot select distinct environments. Malformed ports,
+whitespace, control characters and credentials are rejected. Legacy token keys keep their original
+three-field serialized representation: unset environment and origin are omitted. Legacy direct clients do not provide isolation between arbitrary origins.
+Before using `for_environment`, the consuming owner must migrate persistence to full namespaced
+keys and acquire explicitly scoped state carrying its exact key provenance. The SDK rejects
+unbound legacy state and mismatched refreshed state before sending their tokens; it never falls
+back to old records or adds this local metadata to RPC JSON. See
+[header authentication](header-authentication.md) for the storage contract.
+
+The native `0.4.0.dev0` metadata identifies this environment API integration; it does not allocate
+or publish a release. Automatic CI and the full `make check` gate remain enabled.

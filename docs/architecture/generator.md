@@ -28,3 +28,23 @@ appears. Handwritten files never override OpenAPI.
 Generated ownership is recorded by the existing manifest only for files actually rendered from
 implemented operations. Non-generated stubs and the shared scope catalog are not silently
 overwritten or deleted, and `--check` compares the entire expected fixed point.
+
+## Implementation boundaries
+
+`scripts/generate_methods.py` remains the compatible import facade, direct script and
+CLI owner. It loads source documents, inspects handwritten modules, controls manifest
+ownership, and performs the final checked writes. Its repository-relative manifest
+paths remain local to that facade.
+
+The optional `src/pypokerlost_generator/` package contains pure implementation modules:
+
+- `models.py`: immutable intermediate records, canonical SDK metadata and name conversion.
+- `schema.py`: input validation, reference/allOf resolution and global operation/type collection.
+- `rendering.py`: deterministic Python annotations, imports, types, methods and facades.
+
+These modules do not fetch contracts or write generated files. The established facade
+re-exports their symbols explicitly so existing `scripts.generate_methods` callers
+continue to work. The wheel includes the package and maps the same script to
+`pypokerlost_generator.__main__`; there is no runtime path injection or fallback import.
+Committed golden fixtures exercise supported allOf, nullable and enum shapes, protected
+scope metadata, failure envelopes, and byte-identical direct-script output.

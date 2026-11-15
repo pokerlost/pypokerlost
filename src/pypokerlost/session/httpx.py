@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from contextlib import suppress
 from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
 from typing import cast
@@ -15,6 +16,7 @@ from pypokerlost.client.pokerlost_api_server import (
     SERVICE_ID_HEADER,
     PokerlostAPIServer,
 )
+from pypokerlost.enums import PokerlostErrorCode
 from pypokerlost.errors import (
     PokerlostAccessTokenExpiredError,
     PokerlostAPIError,
@@ -31,14 +33,14 @@ from pypokerlost.types import PokerlostResponse
 from .base import PokerlostSession
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
-_EXPIRED_ERROR = "POKERLOST_ACCESS_TOKEN_EXPIRED"
+_EXPIRED_ERROR = PokerlostErrorCode.ACCESS_TOKEN_EXPIRED.value
 _AUTHENTICATION_ERRORS = frozenset(
     {
-        "POKERLOST_AUTHENTICATION_REQUIRED",
-        "POKERLOST_ACCESS_TOKEN_INVALID",
+        PokerlostErrorCode.AUTHENTICATION_REQUIRED.value,
+        PokerlostErrorCode.ACCESS_TOKEN_INVALID.value,
     }
 )
-_AUTHORIZATION_ERRORS = frozenset({"POKERLOST_INSUFFICIENT_SCOPE"})
+_AUTHORIZATION_ERRORS = frozenset({PokerlostErrorCode.INSUFFICIENT_SCOPE.value})
 
 
 class _RejectAllCookiePolicy(DefaultCookiePolicy):
@@ -70,8 +72,13 @@ class HttpxSession(PokerlostSession):
         api_server: PokerlostAPIServer = DEFAULT_POKERLOST_API_SERVER,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        if type(timeout) is bool or not isinstance(timeout, int | float) or timeout <= 0:
-            raise ValueError("Pokerlost session timeout must be positive")
+        if (
+            type(timeout) is bool
+            or not isinstance(timeout, int | float)
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("Pokerlost session timeout must be finite and positive")
         self._api_server = api_server
         self._timeout = float(timeout)
         self._http_client: httpx.AsyncClient | None = None
