@@ -11,11 +11,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class PokerlostRequestOptions:
-    """Opt one logical call into the canonical retry policy."""
+    """Select retry bounds and explicitly attest that replay is safe."""
 
     retry_policy: PokerlostRetryPolicy | None = None
+    retry_safe: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.retry_safe) is not bool:
+            raise TypeError("retry_safe must be a bool")
         if self.retry_policy is not None:
             from pypokerlost.middleware.retry import PokerlostRetryPolicy
 

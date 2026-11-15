@@ -70,10 +70,19 @@ def test_server_rejects_nonstring_origin() -> None:
         PokerlostAPIServer(None)
 
 
-@pytest.mark.parametrize("timeout", [0, -1, True, "10", None])
+@pytest.mark.parametrize(
+    "timeout",
+    [float("nan"), float("inf"), float("-inf"), 0, 0.0, -1, -0.5, True, False, "10", None],
+)
 def test_session_rejects_invalid_timeouts(timeout: object) -> None:
     with pytest.raises(ValueError, match="positive"):
         HttpxSession(timeout=timeout)
+
+
+@pytest.mark.parametrize("timeout", [1, 10, 0.001, 2.5])
+def test_session_accepts_finite_positive_timeouts(timeout: int | float) -> None:
+    session = HttpxSession(timeout=timeout)
+    assert session._timeout == float(timeout)
 
 
 def test_session_lifecycle_is_idempotent_and_restartable(transport: Transport) -> None:

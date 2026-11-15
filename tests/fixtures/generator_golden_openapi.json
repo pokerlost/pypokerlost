@@ -1,0 +1,245 @@
+{
+  "components": {
+    "schemas": {
+      "TechnicalRecord": {
+        "allOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "client_secret": {
+                "type": "string"
+              },
+              "state": {
+                "enum": [
+                  "ready",
+                  "done"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "client_secret"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "PokerlostOAuth2": {
+        "flows": {
+          "clientCredentials": {
+            "scopes": {
+              "accounts.self.getMe": "Read the synthetic identity"
+            },
+            "tokenUrl": "/getToken"
+          }
+        },
+        "type": "oauth2"
+      }
+    }
+  },
+  "info": {
+    "title": "Technical fixture",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/technicalGolden": {
+      "post": {
+        "operationId": "technicalGolden",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "mode": {
+                        "enum": [
+                          "fast",
+                          "safe"
+                        ]
+                      },
+                      "record": {
+                        "$ref": "#/components/schemas/TechnicalRecord"
+                      }
+                    },
+                    "required": [
+                      "record",
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "payload"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error"
+                    },
+                    "error_message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error Message"
+                    },
+                    "ok": {
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/TechnicalRecord"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "retry_after": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Retry After"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "title": "PokerlostResponse[int]",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Technical success"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error"
+                    },
+                    "error_message": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error Message"
+                    },
+                    "ok": {
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "default": null,
+                      "title": "Result",
+                      "type": "null"
+                    },
+                    "retry_after": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Retry After"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "title": "PokerlostResponse[NoneType]",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Technical failure"
+          }
+        },
+        "security": [
+          {
+            "PokerlostOAuth2": [
+              "accounts.self.getMe"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

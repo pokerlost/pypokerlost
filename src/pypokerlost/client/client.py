@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack, suppress
 from types import TracebackType
 from typing import Self, cast
 
-from pypokerlost.enums import PokerlostScopes
+from pypokerlost.enums import PokerlostScopes, ServiceId
 from pypokerlost.errors import PokerlostConfigurationError
 from pypokerlost.methods import PokerlostMethod
 from pypokerlost.middleware import (
@@ -20,6 +20,7 @@ from pypokerlost.middleware._call import PokerlostCall
 from pypokerlost.session import HttpxSession, PokerlostSession
 from pypokerlost.types import PokerlostRequest
 
+from .environment import PokerlostEnvironmentConfig
 from .pokerlost_api_server import PokerlostAPIServer
 from .pokerlost_request_options import PokerlostRequestOptions
 
@@ -68,7 +69,21 @@ class PokerlostClient:
             self._session = HttpxSession(api_server=server)
         else:
             self._session = HttpxSession()
+        if authentication is not None:
+            target = self._session.api_server if isinstance(self._session, HttpxSession) else None
+            authentication.validate_target(target)
         self._context_stack: AsyncExitStack | None = None
+
+    @classmethod
+    def for_environment(
+        cls,
+        config: PokerlostEnvironmentConfig,
+        *,
+        service_id: ServiceId | None = None,
+        middleware: Sequence[PokerlostMiddleware] = (),
+    ) -> Self:
+        """Create a fresh origin-bound pool; credentials are never copied implicitly."""
+        return cls(server=config.server(service_id), middleware=middleware)
 
     @property
     def session(self) -> PokerlostSession:

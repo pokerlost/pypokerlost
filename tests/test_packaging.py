@@ -30,6 +30,11 @@ def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_
     package = root / "src/pypokerlost"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text('"""Synthetic packaging-policy fixture."""\n')
+    shutil.copytree(
+        REPOSITORY / "src/pypokerlost_generator",
+        root / "src/pypokerlost_generator",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
     for name in PRIVATE_PARTS - {".env.private", ".aws"}:
         (root / name).mkdir()
         (root / name / "fixture").write_text("synthetic-not-credentials\n")
@@ -70,5 +75,9 @@ def test_locked_backend_excludes_private_inputs_without_git(tmp_path: Path, aws_
     assert any(name.endswith("/pypokerlost/__init__.py") for name in sdist)
     assert "pypokerlost/__init__.py" in wheel
     assert "pypokerlost/core/retained.py" in wheel
+    for name in ("__init__.py", "models.py", "schema.py", "rendering.py"):
+        assert f"pypokerlost_generator/{name}" in wheel
+        assert any(item.endswith(f"/src/pypokerlost_generator/{name}") for item in sdist)
+    assert "pypokerlost_generator/__main__.py" in wheel
     assert any(name.endswith("/.coveragerc") for name in sdist)
     assert any(name.endswith("/.env.example") for name in sdist)

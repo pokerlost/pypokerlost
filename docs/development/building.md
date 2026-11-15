@@ -74,7 +74,9 @@ host diagnostic build, separate from the canonical container artifact identity.
 
 Install the wheel with the `generator` extra to use `pypokerlost-generate --version` and
 `pypokerlost-generate file <openapi.json> --output src/pypokerlost`. The canonical source remains
-`scripts/generate_methods.py`; Hatch maps that file into the optional command package at build time.
+`scripts/generate_methods.py` for CLI and filesystem orchestration, with pure models,
+schema validation/resolution and rendering under `src/pypokerlost_generator/`.
+Hatch includes that package and maps the compatible script to its `__main__.py` at build time.
 The SDK runtime still needs only HTTPX and Pydantic. Test wheel imports from a different directory
 without editable installation, a source checkout, `.git`, or `PYTHONPATH`.
 
