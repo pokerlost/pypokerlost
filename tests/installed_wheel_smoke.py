@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -119,13 +120,15 @@ def main() -> None:
         PokerlostAuthenticationMiddleware,
     ):
         assert symbol.__module__.startswith("pypokerlost.")
-    built = sorted(Path("/artifacts").glob("*"))
-    exported = sorted(Path("/verified-artifacts").glob("*"))
+    built_root = Path(os.environ.get("BUILT_ARTIFACT_DIRECTORY", "/artifacts"))
+    verified_root = Path(os.environ.get("VERIFIED_ARTIFACT_DIRECTORY", "/verified-artifacts"))
+    built = sorted(built_root.glob("*"))
+    exported = sorted(verified_root.glob("*"))
     assert {path.name for path in built} == {path.name for path in exported}
     hashes = {}
     for path in exported:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        assert digest == hashlib.sha256((Path("/artifacts") / path.name).read_bytes()).hexdigest()
+        assert digest == hashlib.sha256((built_root / path.name).read_bytes()).hexdigest()
         hashes[path.name] = digest
     assert any(name.endswith(".whl") for name in hashes)
     assert any(name.endswith(".tar.gz") for name in hashes)
