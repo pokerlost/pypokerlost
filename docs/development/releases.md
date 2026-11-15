@@ -41,4 +41,11 @@ overwrite assets or manually create a duplicate release. Conflicting metadata or
 native/provenance evidence remains blocked. The provider contract defines the read-only audit
 and artifact-retention limits.
 
+A cancelled workflow can still have a fully published release when publication completes
+during cancellation. Inspect both the run and release before recovery. The full original-run
+rerun audits an already published release and preserves its allocation, tag, asset IDs, bytes
+and proof selection. This proves idempotency; interrupted-draft recovery additionally requires
+an observed incomplete draft after interruption and its completion by the same original run.
+Never delete or replace assets to simulate an interrupted draft.
+
 See [the documentation index](../index.md) for the public SDK and generator contracts.
